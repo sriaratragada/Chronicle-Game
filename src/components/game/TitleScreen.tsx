@@ -83,6 +83,18 @@ export default function TitleScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      startGame();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [startGame]);
+
+  useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
     const paint = () => {
@@ -149,6 +161,7 @@ export default function TitleScreen() {
         >
           Enter the World
         </motion.button>
+        <p className="font-mono text-[10px] tracking-wider text-mist/40">Enter or Space</p>
       </motion.div>
     </div>
   );

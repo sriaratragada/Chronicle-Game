@@ -35,7 +35,7 @@ function computeFactionStress(factions: Record<string, { treasury: number; atWar
 
 function onTick() {
   const state = useGameStore.getState();
-  if (state.currentEvent || state.lastResult || state.phase === 'dead' || state.phase === 'title' || state.phase === 'dungeon' || state.phase === 'battle') return;
+  if (state.currentEvent || state.lastResult || state.phase === 'dead' || state.phase === 'title' || state.phase === 'booting' || state.phase === 'dungeon' || state.phase === 'battle') return;
   if (state.overlay !== 'none') return;
 
   const newWorldTime = state.worldTime + 1;

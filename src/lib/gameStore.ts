@@ -128,6 +128,91 @@ function initBountyBoards(): Record<string, BountyBoard> {
   return boards;
 }
 
+/** Lets the booting UI paint before synchronous world init blocks the main thread. */
+function scheduleAfterPaint(fn: () => void): void {
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(fn);
+    });
+  } else {
+    setTimeout(fn, 0);
+  }
+}
+
+/** Heavy path: seed, entities, markets, fog — keep off the first title→booting frame. */
+function computeFreshPlayingState(): Partial<GameState> & { phase: 'playing' } {
+  setSeed(42);
+  initWorldEntities();
+  const npcs = JSON.parse(JSON.stringify(INITIAL_NPCS)) as GameState['npcs'];
+  const inv = makeStarterInventory();
+  const fog = revealAroundPlayer(createFogMap(), LOCATION_COORDS.ashenford.x, LOCATION_COORDS.ashenford.y, 120);
+  const initialChronicle: ChronicleEntry = {
+    tick: 0,
+    season: 'thaw',
+    text: 'A traveler arrived in Ashenford at the start of the Thaw. No one knew their name. No one asked. The world does not care about you. Not yet.',
+    type: 'world',
+  };
+  const baseMarkets = createMarkets();
+  const innMarkets = buildRoadInnMarkets(getRoadInnSites());
+  return {
+    phase: 'playing',
+    isMoving: false,
+    health: 100,
+    maxHealth: 100,
+    hunger: 100,
+    tick: 0,
+    worldTime: 14 * 2,
+    dayNightPhase: 'day',
+    weather: createWeatherState(),
+    season: 'thaw',
+    seasonTick: 0,
+    seed: 42,
+    inventory: inv,
+    hotbar: inventoryToHotbar(inv),
+    activeSlot: 0,
+    gold: 10,
+    skills: createSkillTree(),
+    markets: { ...baseMarkets, ...innMarkets },
+    reputation: { conquest: 0, trade: 0, craft: 0, diplomacy: 0, exploration: 0, arcane: 0 },
+    factions: { amber: 0, iron: 0, green: 0, scholar: 0, ashen: 0, tide: 0 },
+    factionStates: createFactions(),
+    quests: [],
+    bountyBoards: initBountyBoards(),
+    currentLocation: 'ashenford',
+    nearestLocation: 'ashenford',
+    playerX: LOCATION_COORDS.ashenford.x,
+    playerY: LOCATION_COORDS.ashenford.y,
+    facingDir: { dx: 0, dy: 1 },
+    mounted: 'none',
+    activeCaveId: null,
+    activeCaveEntityId: null,
+    clearedCaves: {},
+    dungeonRun: null,
+    regionalModifiers: createRegionalModifiers(),
+    escortCaravanId: null,
+    campStash: createInventory(),
+    activeCampFireId: null,
+    npcs,
+    activeDialogue: null,
+    minorNpcState: {},
+    tutorialObjective: 0,
+    chronicle: [initialChronicle],
+    currentEvent: null,
+    lastResult: null,
+    visitedLocations: ['ashenford'],
+    completedEvents: [],
+    playerTitle: 'Unknown Traveler',
+    fog,
+    housing: createHousing(),
+    overlay: 'none',
+    tutorialStep: 'movement',
+    environmentCooldowns: {},
+    shopMarketId: null,
+    wildPoiProgress: {},
+    battleState: null,
+  };
+}
+
 interface GameStore extends GameState {
   startGame: () => void;
   setActiveSlot: (slot: number) => void;
@@ -224,46 +309,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
   battleState: null,
 
   startGame: () => {
-    setSeed(42);
-    initWorldEntities();
-    const npcs = JSON.parse(JSON.stringify(INITIAL_NPCS));
-    const inv = makeStarterInventory();
-    const fog = revealAroundPlayer(createFogMap(), LOCATION_COORDS.ashenford.x, LOCATION_COORDS.ashenford.y, 120);
-    const initialChronicle: ChronicleEntry = {
-      tick: 0, season: 'thaw',
-      text: 'A traveler arrived in Ashenford at the start of the Thaw. No one knew their name. No one asked. The world does not care about you. Not yet.',
-      type: 'world',
-    };
-    const baseMarkets = createMarkets();
-    const innMarkets = buildRoadInnMarkets(getRoadInnSites());
-    set({
-      phase: 'playing',
-      isMoving: false,
-      health: 100, maxHealth: 100, hunger: 100,
-      tick: 0, worldTime: 14 * 2, dayNightPhase: 'day',
-      weather: createWeatherState(), season: 'thaw', seasonTick: 0, seed: 42,
-      inventory: inv, hotbar: inventoryToHotbar(inv), activeSlot: 0, gold: 10,
-      skills: createSkillTree(),
-      markets: { ...baseMarkets, ...innMarkets },
-      reputation: { conquest: 0, trade: 0, craft: 0, diplomacy: 0, exploration: 0, arcane: 0 },
-      factions: { amber: 0, iron: 0, green: 0, scholar: 0, ashen: 0, tide: 0 },
-      factionStates: createFactions(),
-      quests: [], bountyBoards: initBountyBoards(),
-      currentLocation: 'ashenford', nearestLocation: 'ashenford',
-      playerX: LOCATION_COORDS.ashenford.x, playerY: LOCATION_COORDS.ashenford.y,
-      facingDir: { dx: 0, dy: 1 }, mounted: 'none', activeCaveId: null,
-      activeCaveEntityId: null, clearedCaves: {}, dungeonRun: null,
-      regionalModifiers: createRegionalModifiers(), escortCaravanId: null,
-      campStash: createInventory(), activeCampFireId: null,
-      npcs, activeDialogue: null, minorNpcState: {}, tutorialObjective: 0,
-      chronicle: [initialChronicle], currentEvent: null, lastResult: null,
-      visitedLocations: ['ashenford'], completedEvents: [],
-      playerTitle: 'Unknown Traveler',
-      fog, housing: createHousing(),
-      overlay: 'none', tutorialStep: 'movement', environmentCooldowns: {},
-      shopMarketId: null, wildPoiProgress: {}, battleState: null,
+    const st = get();
+    if (st.phase === 'booting') return;
+    if (st.phase !== 'title') return;
+    set({ phase: 'booting' });
+    scheduleAfterPaint(() => {
+      try {
+        set(computeFreshPlayingState());
+        startTicker();
+      } catch (e) {
+        console.error('startGame failed', e);
+        set({ phase: 'title' });
+      }
     });
-    startTicker();
   },
 
   setActiveSlot: (slot: number) => set({ activeSlot: slot }),

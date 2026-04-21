@@ -1,5 +1,6 @@
 import { useGameStore } from '@/lib/gameStore';
 import TitleScreen from '@/components/game/TitleScreen';
+import BootingScreen from '@/components/game/BootingScreen';
 import GameScreen from '@/components/game/GameScreen';
 
 const Index = () => {
@@ -7,6 +8,10 @@ const Index = () => {
 
   if (phase === 'title') {
     return <TitleScreen />;
+  }
+
+  if (phase === 'booting') {
+    return <BootingScreen />;
   }
 
   return (

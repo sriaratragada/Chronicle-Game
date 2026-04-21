@@ -160,7 +160,7 @@ export interface BattleState {
 }
 
 export interface GameState {
-  phase: 'title' | 'playing' | 'chronicle' | 'dead' | 'sailing' | 'dungeon' | 'battle';
+  phase: 'title' | 'booting' | 'playing' | 'chronicle' | 'dead' | 'sailing' | 'dungeon' | 'battle';
   health: number;
   maxHealth: number;
   hunger: number;

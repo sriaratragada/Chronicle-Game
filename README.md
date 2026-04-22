@@ -1,236 +1,210 @@
-# Chronicle of Aethermoor — agent context dictionary
+# Chronicle of Aethermoor
 
-Single reference for **what exists**, **how it fits together**, **performance contracts**, and **where to extend**. No API keys or secrets here.
+A browser-based fantasy exploration game built with React + TypeScript, focused on large-scale procedural world simulation, dynamic NPC behavior, and AI-assisted narrative interaction.
 
----
+## Table of Contents
 
-## Project identity (plain terms)
+- [Overview](#overview)
+- [Core Features](#core-features)
+- [Lore](#lore)
+- [AI Systems (Technical)](#ai-systems-technical)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Available Scripts](#available-scripts)
+- [Environment Variables](#environment-variables)
+- [Project Structure](#project-structure)
+- [Current Scope and Next AI Milestones](#current-scope-and-next-ai-milestones)
 
-- **What:** Browser-based top-down open-world RPG prototype: explore a huge tile map, settlements, hamlets, trade roads, combat, inventory, quests, chronicle, fog of war, optional AI dialogue (Gemini).
-- **What it is not:** Not a multiplayer server game; not a 3D engine; not a full MMO backend. Saves are **localStorage** + JSON entity blob.
+## Overview
 
----
+**Chronicle of Aethermoor** is an open-world top-down RPG prototype where the world keeps evolving as time passes.  
+You explore continents, settlements, roads, dungeons, and wilderness while interacting with systems for:
 
-## Stack glossary (coding terms)
+- weather and day/night cycles,
+- economy and trade routes,
+- faction tensions and bounties,
+- NPC schedules and movement,
+- combat, inventory, crafting, and quests,
+- chronicle/event history and local saves.
 
-| Layer | Technology |
-|--------|-------------|
-| App shell | **React 18**, **TypeScript**, **Vite 5** |
-| Global state | **Zustand** (`src/lib/gameStore.ts`) — one store, actions on the same object shape as `GameState` + methods |
-| World map UI | **HTML5 Canvas** in `WorldMap.tsx` — `requestAnimationFrame` render loop, refs for hot paths (no React per frame for terrain) |
-| Styling | **Tailwind**, shadcn/Radix primitives where used |
-| Motion | **Framer Motion** on title/overlays |
-| Map data | **Procedural** per chunk — no pre-baked 10k×10k array; `getChunkData(cx,cy)` caches chunks in `mapGenerator` |
+The game runs entirely in the browser and uses procedural generation + chunk caching to support a large world efficiently.
 
----
+## Core Features
 
-## App routing (`src/pages/Index.tsx`)
+- **Massive procedural world** generated per chunk (`mapGenerator.ts`)
+- **Fog of war + discovery** (`fogOfWar.ts`)
+- **World simulation ticker** that advances systems over time (`worldTicker.ts`)
+- **Living entities**: NPCs, caravans, wildlife, enemies (`worldEntities.ts`)
+- **Economy + road-network trade** (`economySystem.ts`, `tradeRoutes.ts`)
+- **Factions, quests, and events** (`factionSystem.ts`, `questSystem.ts`, `simulationEvents.ts`)
+- **Dialogue and narrative chronicle** (`dialogue.ts`, `ChronicleView.tsx`)
+- **Save/load slot system** using browser storage (`saveSystem.ts`)
+- **Optional Gemini-powered NPC dialogue** (`geminiNpc.ts`)
 
-- **`phase === 'title'`** → `TitleScreen` (menu + world preview canvas).
-- **`phase === 'booting'`** → `BootingScreen` (spinner copy only; errors surface on title — see **bootError**).
-- **Else** → `GameScreen` (playing, sailing, dungeon, battle, dead, etc. — all non-title phases share this shell).
+## Lore
 
----
+The world of **Aethermoor** is fractured between old empires, war economies, and frontiers that reject civilization.
 
-## Game phases (`GameState.phase` in `gameTypes.ts`)
+### Continents
 
-| Phase | Meaning |
-|--------|---------|
-| `title` | Menu; `startGame` allowed |
-| `booting` | Between title and playing; heavy init split across rAFs |
-| `playing` | Overworld |
-| `sailing`, `dungeon`, `battle`, `dead`, `chronicle` | Specialized flows |
+- **Auredia — The Grand Kingdom**  
+  A stable monarchy built on roads, tax systems, and central rule from Highmarch. Peace on paper; intrigue in practice.
 
-**World simulation** (`worldTicker`) is blocked when `worldTickBlocked(state)` is true (event modal, battle, dungeon, death, non-`none` overlay, etc.) — see `worldTicker.ts`.
+- **Trivalen — The Warring Continent**  
+  A contested land ruled by three rival powers:
+  - **Korrath** (iron and militarism),
+  - **Vell** (coastal wealth and trade politics),
+  - **Sarnak Khanate** (mobile cavalry power on the steppe).
 
----
+- **Uloren — The Unexplored**  
+  Dense forests, old stones, and ruins predating recorded history. Sparse villages survive under constant uncertainty.
 
-## Boot pipeline (architecture)
+### World Tone
 
-**Goal:** Paint `BootingScreen` before long synchronous work; split work so the main thread can breathe; warm expensive caches before mass `getTileAt`.
+This is not a static “theme park” map. It is a reactive realm where roads matter, caravans feed towns, rumors spread, factions shift influence, and local stories emerge through systems rather than scripted rails.
 
-**Entry:** `startGame()` in `gameStore.ts` — only from `phase === 'title'`; sets `phase: 'booting'`, `bootError: null`.
+## AI Systems (Technical)
 
-**Scheduling:** `scheduleAfterPaint(fn)` = **double `requestAnimationFrame`** (fallback `setTimeout`) so the booting UI gets one paint before work.
+The game treats many world actors as **agents** with bounded autonomy and shared simulation context.
 
-**Slice 1 — `bootstrapWorldGeometry()`**
+### 1) Agentic NPC Behavior
 
-1. `setSeed(42)` — clears chunk cache, road cache, **settlement layout caches**, wilderness POI caches, **hamlet cache** (`invalidateHamletCache` via `mapGenerator`).
-2. `ensureRoads()` — builds global trade-road `Set` (Bresenham between `TRADE_CONNECTIONS`).
-3. `warmSettlementRoadIndexes()` — exported from `settlementLayout.ts`; builds **union of all settlement-local road cells** once (`ensureUnionLocalRoads`) so later `getTileAt` → `isSettlementLocalRoad` does not pay first-hit O(all settlements) inside random code paths.
-4. `void getHamlets()` — forces hamlet list build once (memoized module-side).
+- NPCs have jobs, schedules, positions, and disposition (`npcAI.ts`, `worldEntities.ts`)
+- Daily behavior is phase-based (dawn/day/dusk/night)
+- Schedule execution is budgeted in the world tick loop for performance stability
+- Disposition and memory-oriented context influence dialogue outcomes
 
-**Slice 2 — `buildFreshPlayingStatePayload()`**
+### 2) World Simulation as a Multi-Agent Environment
 
-- `initWorldEntities()` — spatial entities (boats, wildlife, NPCs, caravans, hamlet residents, etc.).
-- Markets (`createMarkets`, `buildRoadInnMarkets(getRoadInnSites())`), fog `revealAroundPlayer(createFogMap(), …)`, full default `GameState` fields for a new game.
-- Then **`startTicker()`** starts the world time interval.
+On each tick (`worldTicker.ts`), multiple subsystems update in staged phases:
 
-**Errors:** Any throw in slice 1 or 2 sets `phase: 'title'`, **`bootError`** to message, logs stack in **DEV**. There is **no other code path** that sends the user back to title from boot except this catch (unless they never left title).
+- weather and environmental pressure,
+- market and trade state,
+- faction progression and bounty refresh,
+- NPC scheduling,
+- caravan routing and deliveries,
+- wildlife/ecosystem movement,
+- simulation event deltas appended to historical logs.
 
-**UX:** `TitleScreen` shows a dismissible banner when `bootError` is set; `clearBootError()` clears it. `saveSystem.loadFromSlot` sets `bootError: null` when merging save; `saveToSlot` strips `clearBootError` from serialized state like other store methods.
+This creates emergent behavior: agents react to a shared world state rather than isolated scripts.
 
----
+#### Macro Scale: Regional Economy as a Living System
 
-## Settlement layout (`settlementLayout.ts`) — dictionary
+The economy is modeled as a world-level AI simulation, not a static shop table:
 
-| Symbol | Role |
-|--------|------|
-| `getSettlementLayoutCenter(id)` | Deterministic “layout center” off global roads; **cached per settlement id** in `layoutCenterCache`. |
-| `collectRoadKeysForSettlement` | **Cached** in `roadKeysBySettlement`; heavy Bresenham + bbox lives in `buildRoadKeysForSettlementUncached`. |
-| `getSettlementSidewalkPositions` | Walkable tiles near local roads for NPC placement; uses cached road keys. |
-| `ensureUnionLocalRoads` | Single `Set` of all settlement-local road cell keys; lazy unless warmed. |
-| `warmSettlementRoadIndexes()` | **Public** — forces union build; call during boot before entity/tile storms. |
-| `invalidateSettlementRoadCache()` | Clears union + **both** per-settlement caches; invoked from `setSeed`. |
-| `mergeSettlementLocalRoadsIntoChunk` / `isSettlementLocalRoad` | Chunk painting and `getTileAt` ROAD override. |
+- **settlement markets** are generated by settlement type (`createMarkets`),
+- **regional modifiers** (drought, storms, bandit pressure) reshape stock and prices (`tickMarket`),
+- **trade corridors + caravan runs** move goods across long routes (`tradeRoutes.ts`, `worldEntities.ts`),
+- **caravan deliveries** directly alter destination supply (`applyCaravanDelivery`),
+- **faction and conflict pressure** can indirectly shift scarcity and market behavior.
 
-**Invariant:** After changing seed or anything that affects layout, caches must invalidate together (`setSeed` already chains this).
+At macro scale, this produces believable continental behavior: ports specialize, inland shortages emerge, and road security influences commercial stability.
 
----
+#### Micro Scale: Local Agent Decisions and Everyday Life
 
-## Hamlets (`hamlets.ts`) — dictionary
+At street level, AI behavior is grounded in individual actors and immediate context:
 
-| Symbol | Role |
-|--------|------|
-| `buildHamlets()` | Grid scan (stride **84**, min spacing 36) near global roads, cap **140** sites; uses `ensureRoads`, `getContinentAt`, `farFromNamedSettlements`. |
-| `getHamlets()` | Memoized list; first call pays grid cost. |
-| `invalidateHamletCache()` | Clears `_hamlets`; called from **`setSeed`** so hamlets stay coherent with new world seed. |
-| `getExtendedLocationCoords()` | Named coords + all hamlet ids for travel/discovery UI. |
-| `isHamletId(id)` | `id.startsWith('hamlet_')`. |
-| `mergeHamletChunkRoads` | Called from chunk generator for road bitmask + spur art. |
+- NPCs follow role-based schedules and location logic (`npcAI.ts`),
+- local weather/time influences movement and dialogue tone,
+- buying/selling updates stock in real time (`buyItem`, `sellItem`),
+- scarcity-based pricing means one player action can nudge local prices,
+- NPC dialogue can reference recent events and social memory for contextual responses.
 
----
+At micro scale, each settlement feels inhabited by people making practical day-to-day decisions rather than waiting for scripted triggers.
 
-## Map generator (`mapGenerator.ts`) — dictionary
+### 3) Simulation Event Spine for AI Context
 
-| Symbol | Role |
-|--------|------|
-| `getChunkData(cx,cy)` | Lazy generate + cache `ChunkData` (tiles, roads bitmask, objects, ambient entities). |
-| `getTileAt(x,y)` | Chunk tile + **global** road set + **`isSettlementLocalRoad`** (union). |
-| `ensureRoads()` | Cached `Set<number>` of global road cell indices. |
-| `setSeed(n)` | Resets **all** seed-dependent caches (chunks, roads, settlement caches, wilderness caches, **hamlets**). |
-| `sampleBaseTerrainCode` / `computeTile` | Biome / continent noise; expensive per call. |
+`simulationEvents.ts` stores structured, append-only events with capped history.  
+These events are designed to be consumed by narrative systems and AI prompts so generated dialogue is grounded in recent world facts.
 
----
+### 4) LLM-Enhanced NPC Conversation (Gemini)
 
-## World ticker (`worldTicker.ts`) — dictionary
+When configured, hamlet/NPC dialogue can be generated using Gemini (`geminiNpc.ts`) with prompt context that includes:
 
-| Concept | Behavior |
-|---------|----------|
-| Default rate | `setInterval(onTick, ~1500ms)`. |
-| `onTick` | Schedules `requestAnimationFrame(runWorldTickPipeline)`. |
-| `runWorldTickPipeline` | **Nested rAFs:** (1) light frame schedules (2) `computeWorldTickPhaseA` (economy/weather/quests…), (3) inner rAF runs `runWorldTickPhaseB` + `applyWorldTickPatch`. Spreads heavy work across frames. |
-| Phase A | `tickWeather`, hunger, markets (periodic), factions, bounty refresh, quest step updates, etc. |
-| Phase B | Caravans, NPC schedules, cooking fires, caravan deliveries, aggro/move enemies, animals flee, periodic **resource spawns** (`newWorldTime % 20`). |
-| Wildlife respawn | `respawnWildlifeFarFrom` on `% 100` worldTime in a **further** deferred rAF. |
-| `applyWorldTickPatch` | Partial `useGameStore.setState` with chronicle cap (`CHRONICLE_CAP`). Also merges **`simEventLog`** via `appendSimEvents` (`SIM_EVENT_CAP` in `simulationEvents.ts`): tick diffs (regional, markets at visited + current location, faction day tick) plus phase-B extras (e.g. escort pay). `simEventsToChronicleEntries` appends `type: 'sim'` chronicle rows for `visibility: 'chronicle'` events. |
+- NPC identity/job/personality,
+- location + continent,
+- season/weather/day phase,
+- NPC memory + disposition,
+- recent chronicle/world events.
 
-**Simulation event spine (`simulationEvents.ts`, `gameTypes.ts` — `SimEvent`, `simEventLog`):**
+Responses are parsed into:
 
-- **Purpose:** Structured append-only log for progression, causality, future graph edges, and LLM context. Player shop buy/sell records `source: 'player'` trade events.
-- **Caps:** `SIM_EVENT_CAP` (trim oldest). Schema field `schemaVersion` on each event for migrations.
-- **Progression stub:** `progressionRegistry.ts` — `evaluateMilestones` returns `[]` until milestone tables land; `GameState.progressionVersion` and `milestonesUnlocked` persist with saves.
+- in-character dialogue text,
+- exactly three player reply options.
 
-**Performance:** Do not add full scans over `entityById` in tick paths; use `entitiesByKind` / spatial queries.
+Caching is used to reduce redundant requests and improve responsiveness.
 
----
+### 5) AI Scope (Expanded Vision)
 
-## World entities (`worldEntities.ts`) — dictionary
+The intended AI trajectory extends beyond dialogue:
 
-| Symbol | Role |
-|--------|------|
-| `spatialHash` | `Map<chunkKey, WorldEntity[]>` for proximity. |
-| `entityById` | `Map<id, WorldEntity>`. |
-| `entitiesByKind` | **`Map<EntityKind, WorldEntity[]>`** — updated in `spawnEntity` / `removeEntity`; **`getEntitiesByKind`** returns a **copy** so loops that `removeEntity` stay safe. |
-| `scheduleNpcBucket` | Only `settlement_npc` + `hamlet_npc` for **`tickWorldNpcSchedules`** (round-robin, `NPC_SCHEDULE_BUDGET` per tick). |
-| `registerEntityIndexes` / `unregisterEntityIndexes` | Internal; **`deserializeEntities`** must register same way as spawn. |
-| `tickCaravanMovement` | Iterates **caravan** bucket only (not all entities). |
-| `respawnWildlifeFarFrom` | Ring sampling, capped attempts, cheap terrain rejects. |
-| `initWorldEntities` | Full world entity bootstrap (runs in boot slice 2). |
+- **Goal-oriented NPC planning** (work, travel, social, survival goals)
+- **Relationship graphs** (alliances, grudges, trust over time)
+- **Faction-level strategy agents** (resource pressure, military posture, diplomacy)
+- **Market intelligence loops** (predictive supply routing, adaptive merchant behavior, convoy risk balancing)
+- **Dynamic quest synthesis** from live world conditions
+- **Chronicle-aware narrative director** to pace major regional arcs
+- **Regional memory models** so settlements “remember” player impact
+- **Macro↔micro coupling** where individual choices accumulate into regional economic and political shifts
 
----
+In short: AI is positioned as both **character intelligence** and **world intelligence**, aiming for a near-real-life simulation feel across macro (regional systems) and micro (individual behavior) scales.
 
-## Fog (`fogOfWar.ts`) — dictionary
+## Tech Stack
 
-- Fog is **per chunk metadata**, `Uint8Array` length `NUM_CX * NUM_CY` (not per-tile megagrid).
-- `createFogMap()`, `revealAroundPlayer`, `revealLocation`, `getRevealLevel` — used by map rendering and `movePlayer`.
+- **Frontend:** React 18, TypeScript, Vite 5
+- **State:** Zustand
+- **Rendering:** HTML5 Canvas + React UI panels
+- **Styling/UI:** Tailwind CSS, shadcn/Radix components
+- **Testing:** Vitest + Testing Library
+- **Optional AI Integration:** Google Gemini API
 
----
+## Getting Started
 
-## Economy / world POI (`economySystem.ts`, `wildernessPoi.ts`)
+```bash
+npm install
+npm run dev
+```
 
-- `createMarkets` — per named settlement with meta.
-- `getRoadInnSites` — cached trail inns along long trade polylines (`computeRoadInnSitesInternal`); invalidated with seed-related flows via `invalidateWildernessCaches` from `setSeed`.
+Then open the local Vite URL shown in your terminal.
 
----
+## Available Scripts
 
-## Save system (`saveSystem.ts`) — dictionary
+- `npm run dev` — start development server
+- `npm run build` — production build
+- `npm run build:dev` — development-mode build
+- `npm run preview` — preview production build
+- `npm run test` — run test suite
+- `npm run test:watch` — watch mode tests
+- `npm run lint` — run ESLint
 
-- **Slots:** `localStorage` keys `chronicle_save_slot_*`, max 4 slots.
-- **Payload:** `{ version, timestamp, state, entities }` — `state` is store minus functions; **`entities`** from `serializeEntities()`. Current **`version`** constant: `SAVE_DATA_VERSION` in `saveSystem.ts` (increment when new persisted fields need defaults).
-- **Load:** `deserializeEntities` then `setState` merge; **`bootError` forced null** after merge. Missing **`simEventLog`**, **`progressionVersion`**, or **`milestonesUnlocked`** are defaulted for older JSON saves.
+## Environment Variables
 
----
+Create a `.env` file in the project root (or copy from `.env.example`):
 
-## UI surface map (files)
+```bash
+VITE_GEMINI_API_KEY=
+```
 
-| File | Responsibility |
-|------|----------------|
-| `Index.tsx` | Phase switch title / booting / game. |
-| `TitleScreen.tsx` | New game, preview canvas, **boot error banner**, keyboard Enter/Space. |
-| `BootingScreen.tsx` | Copy-only loading state. |
-| `GameScreen.tsx` | Overlays, tutorial, phase-specific panels. |
-| `WorldMap.tsx` | Canvas loop, movement interval, fog, chunk bake cache, input. |
-| `HudBar.tsx` | HUD; prefers narrow Zustand selectors where tuned. |
-| `Minimap.tsx` | Terrain sample, roads, locations, hamlets, entities. |
-| `OverlayPanel.tsx` | Overlay router. |
-| `ChronicleView.tsx` | Chronicle UI; entries with **`eventId`** expand to show linked **`SimEvent.deltas`** from `simEventLog`. |
+If no key is provided, the game still runs; AI dialogue enhancement is simply disabled.
 
----
+## Project Structure
 
-## Optional Gemini (`geminiNpc.ts`)
+```text
+src/
+  components/game/     # Main game UI (map, HUD, panels, battle, overlays)
+  lib/                 # Core simulation systems (world, entities, economy, AI, saves)
+  pages/               # Route-level app entry pages
+  test/                # Vitest test files
+```
 
-- Env: `VITE_GEMINI_API_KEY`. Used to enrich hamlet dialogue from `interactEntity` when configured. Never commit secrets; `.env.example` documents.
+## Current Scope and Next AI Milestones
 
----
+Current implementation already supports simulation-driven gameplay, structured events, and optional AI dialogue.  
+Next major milestones are focused on deeper autonomous behavior and long-horizon narrative coherence:
 
-## Temporary debug instrumentation (optional cleanup)
-
-Some files still contain **folded `#region agent log`** blocks posting NDJSON to a local ingest URL (`127.0.0.1:7891`) and/or logging slow `movePlayer` / rAF gaps. Safe to remove when performance work is settled; does not affect production logic beyond tiny `fetch` no-ops.
-
-**Files:** `worldTicker.ts`, `gameStore.ts` (`movePlayer`), `WorldMap.tsx` (large rAF gap).
-
----
-
-## Extension points (where features grow)
-
-| Want to add… | Touch |
-|--------------|--------|
-| New `EntityKind` | `worldEntities.ts` (spawn/remove + **kind bucket** + draw in `WorldMap` + combat/interaction filters) |
-| New settlement / POI | `SETTLEMENTS` / `LOCATION_COORDS` / `gameData` events / `settlementLayout` if layout roads needed |
-| New overlay | `OverlayType` in `gameTypes.ts`, `OverlayPanel`, `GameScreen` |
-| New world-time behavior | `worldTicker.ts` phase A or B; respect `worldTickBlocked` |
-| New save fields | `saveToSlot` strip list + migration if `version` bumps |
-
----
-
-## Future scope (not built yet — product direction)
-
-Reasonable **next** directions (none guaranteed in repo):
-
-- **Stronger boot UX:** Progress text per slice, optional third rAF if profiling shows one step still dominates.
-- **Runtime sim caps:** Global cap or GC for periodic **resource** entities spawned near player; prevents unbounded `getEntitiesNear` density in one chunk over long sessions.
-- **Worker / incremental chunk pipeline:** Off-main-thread chunk generation (large refactor).
-- **Cloud saves / auth:** Would replace or augment `saveSystem.ts`.
-- **Deeper quest / faction simulation:** More `gameData` + store slices; keep tick work budgeted.
-
-**Out of scope for “small change” expectations:** rewriting the entire renderer, full MMO server, or replacing Zustand without a dedicated migration.
-
----
-
-## Conventions for agents
-
-- Prefer **small, focused diffs**; match existing naming and file layout.
-- After **seed** or **road** changes, assume **settlement + hamlet caches must stay consistent** — use existing invalidation entry points.
-- **New entity kinds** must update **both** spatial structures **and** `entitiesByKind` (+ `scheduleNpcBucket` if NPC-scheduled).
-- **Boot failures** are surfaced via **`bootError`**; do not silently swallow errors in `startGame` without updating that contract.
+1. deeper NPC memory and intent persistence,
+2. faction strategy loops tied to economy and territory,
+3. adaptive trade AI (merchant route choice, convoy response to risk, regional arbitrage),
+4. event-to-quest generation pipelines grounded in simulation deltas,
+5. narrative quality controls for AI outputs (consistency, lore adherence, safety),
+6. optional cloud-backed persistence for long-running worlds.

@@ -35,6 +35,7 @@ import { DialogueTree, getDialogueTree, genericDialogue, roadInnDialogue } from 
 import { generateNpcDialogue, isGeminiConfigured } from './geminiNpc';
 import { findNearestWildernessPoi, getRoadInnSites } from './wildernessPoi';
 import { rollFishingLoot } from './fishingLoot';
+import { appendSimEvents, recordPlayerShopBuy, recordPlayerShopSell, simEventsToChronicleEntries, SIM_EVENT_CAP } from './simulationEvents';
 
 const SEASON_ORDER: Season[] = ['thaw', 'summer', 'harvest', 'dark'];
 const TICKS_PER_SEASON = 12;
@@ -207,6 +208,9 @@ function buildFreshPlayingStatePayload(): Partial<GameState> & { phase: 'playing
     minorNpcState: {},
     tutorialObjective: 0,
     chronicle: [initialChronicle],
+    simEventLog: [],
+    progressionVersion: 0,
+    milestonesUnlocked: [],
     currentEvent: null,
     lastResult: null,
     visitedLocations: ['ashenford'],
@@ -306,6 +310,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   minorNpcState: {},
   tutorialObjective: 0,
   chronicle: [],
+  simEventLog: [],
+  progressionVersion: 0,
+  milestonesUnlocked: [],
   currentEvent: null,
   lastResult: null,
   visitedLocations: [],
@@ -1143,12 +1150,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
         },
       };
     }
+    const seq = state.simEventLog.length;
+    const tradeEv = recordPlayerShopBuy({
+      worldTime: state.worldTime,
+      gameTick: state.tick,
+      season: state.season,
+      marketKey: mkey,
+      itemId,
+      qty,
+      goldBefore: state.gold,
+      goldAfter: state.gold - totalCost,
+      stockBefore: mItem.stock,
+      stockAfter: mItem.stock - qty,
+      seq,
+    });
+    const simLog = appendSimEvents(state.simEventLog, [tradeEv], SIM_EVENT_CAP);
+    const chronSim = simEventsToChronicleEntries([tradeEv]);
     set({
       gold: state.gold - totalCost,
       inventory: newInv,
       hotbar: inventoryToHotbar(newInv),
       markets: { ...state.markets, [mkey]: newMarket },
       minorNpcState: minorPatch,
+      simEventLog: simLog,
+      chronicle: [...state.chronicle, ...chronSim],
     });
   },
 
@@ -1269,7 +1294,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const sellPrice = Math.max(1, Math.floor((def.value ?? 1) * 0.6));
     const revenue = sellPrice * qty;
     const newInv = removeFromInventory(state.inventory, itemId, qty);
-    set({ gold: state.gold + revenue, inventory: newInv, hotbar: inventoryToHotbar(newInv) });
+    const seq = state.simEventLog.length;
+    const tradeEv = recordPlayerShopSell({
+      worldTime: state.worldTime,
+      gameTick: state.tick,
+      season: state.season,
+      itemId,
+      qty,
+      goldBefore: state.gold,
+      goldAfter: state.gold + revenue,
+      seq,
+    });
+    const simLog = appendSimEvents(state.simEventLog, [tradeEv], SIM_EVENT_CAP);
+    const chronSim = simEventsToChronicleEntries([tradeEv]);
+    set({
+      gold: state.gold + revenue,
+      inventory: newInv,
+      hotbar: inventoryToHotbar(newInv),
+      simEventLog: simLog,
+      chronicle: [...state.chronicle, ...chronSim],
+    });
   },
 
   acceptQuest: (quest: Quest) => {

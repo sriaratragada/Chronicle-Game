@@ -19,7 +19,14 @@ import { enemyAttackDamage, getAggroRadius } from './combatSystem';
 import { getTotalArmor } from './craftingSystem';
 import { MAP_W, MAP_H } from './mapGenerator';
 import { tickRegionalModifiers } from './regionalState';
-import type { ChronicleEntry, GameState, DayNightPhase, Season } from './gameTypes';
+import type { ChronicleEntry, GameState, DayNightPhase, Season, SimEvent } from './gameTypes';
+import {
+  appendSimEvents,
+  buildWorldTickSimEvents,
+  createEscortPaySimEvent,
+  simEventsToChronicleEntries,
+  SIM_EVENT_CAP,
+} from './simulationEvents';
 
 const CHRONICLE_CAP = 400;
 
@@ -82,6 +89,9 @@ interface WorldTickScratch {
   newQuests: GameState['quests'];
   escortId: string | null;
   newGold: number;
+  /** Player / caravan sim events emitted during phase B (e.g. escort pay). */
+  extraSimEvents: SimEvent[];
+  simIdIndex: { n: number };
 }
 
 function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
@@ -194,6 +204,8 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
     newQuests,
     escortId,
     newGold: state.gold,
+    extraSimEvents: [],
+    simIdIndex: { n: 0 },
   };
 }
 
@@ -234,12 +246,24 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
     const dist = Math.hypot(c.x - latest.playerX, c.y - latest.playerY);
     if (latest.escortCaravanId === c.id && dist < 14 && !c.data.escortPaid) {
       c.data.escortPaid = true;
-      newGold += 35 + Math.floor(Math.random() * 40);
+      const pay = 35 + Math.floor(Math.random() * 40);
+      const goldBefore = newGold;
+      newGold += pay;
+      const escEv = createEscortPaySimEvent({
+        worldTime: newWorldTime,
+        gameTick: state.tick,
+        season: state.season,
+        goldBefore,
+        goldAfter: newGold,
+        caravanId: c.id,
+      });
+      scratch.extraSimEvents.push(escEv);
       extraChronicle.push({
         tick: state.tick,
         season: state.season,
         text: 'The caravan master pays escort coin as wagons roll into the yard.',
         type: 'world',
+        eventId: escEv.id,
       });
     }
   }
@@ -304,11 +328,44 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
 }
 
 function applyWorldTickPatch(scratch: WorldTickScratch): void {
-  const { state, newWorldTime, newDayNight, newSeason, newWeather, newHunger, newHealth, newPhase, newRegional, extraChronicle, newMarkets, newFactionStates, newBountyBoards, newQuests, escortId, newGold } = scratch;
+  const {
+    state,
+    newWorldTime,
+    newDayNight,
+    newSeason,
+    newWeather,
+    newHunger,
+    newHealth,
+    newPhase,
+    newRegional,
+    extraChronicle,
+    newMarkets,
+    newFactionStates,
+    newBountyBoards,
+    newQuests,
+    escortId,
+    newGold,
+    extraSimEvents,
+    simIdIndex,
+  } = scratch;
+
+  const diffSim = buildWorldTickSimEvents({
+    prev: state,
+    newWorldTime,
+    newSeason,
+    newRegional,
+    newMarkets,
+    newFactionStates,
+    idIndex: simIdIndex,
+  });
+  const allTickSim = [...diffSim, ...extraSimEvents];
+  const nextSimLog =
+    allTickSim.length > 0 ? appendSimEvents(state.simEventLog, allTickSim, SIM_EVENT_CAP) : state.simEventLog;
+  const chronFromSim = simEventsToChronicleEntries(allTickSim);
 
   let nextChronicle = state.chronicle;
-  if (extraChronicle.length > 0) {
-    const merged = [...state.chronicle, ...extraChronicle];
+  if (extraChronicle.length > 0 || chronFromSim.length > 0) {
+    const merged = [...state.chronicle, ...extraChronicle, ...chronFromSim];
     nextChronicle = merged.length > CHRONICLE_CAP ? merged.slice(-CHRONICLE_CAP) : merged;
   }
 
@@ -329,6 +386,7 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
   if (newBountyBoards !== state.bountyBoards) patch.bountyBoards = newBountyBoards;
   if (newQuests !== state.quests) patch.quests = newQuests;
   if (nextChronicle !== state.chronicle) patch.chronicle = nextChronicle;
+  if (nextSimLog !== state.simEventLog) patch.simEventLog = nextSimLog;
 
   // #region agent log
   const _tS0 = performance.now();

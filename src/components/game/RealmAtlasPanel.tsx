@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import {
@@ -14,7 +14,10 @@ import { LOCATIONS } from '@/lib/gameData';
 import { getEntitiesByKind } from '@/lib/worldEntities';
 
 const CACHE_SIZE = 1024;
-const TERRAIN_STEP = 12;
+/** Slightly coarser sample = faster build; still reads detailed at atlas zoom. */
+const TERRAIN_STEP = 14;
+/** Max ms spent filling terrain per animation frame (keeps UI responsive). */
+const TERRAIN_SLICE_MS = 12;
 
 /** Same topology as Minimap — settlement road edges for drawing. */
 const CONNECTIONS: [string, string][] = [
@@ -49,7 +52,6 @@ const CONNECTIONS: [string, string][] = [
   ['marshend', 'sunfield'],
 ];
 
-/** RGB per TILE_NAMES index — readable overview palette. */
 const ATLAS_PALETTE: [number, number, number][] = [
   [18, 42, 62],
   [42, 92, 118],
@@ -68,26 +70,14 @@ const ATLAS_PALETTE: [number, number, number][] = [
   [132, 138, 92],
 ];
 
-function buildAtlasCache(canvas: HTMLCanvasElement): void {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const S = CACHE_SIZE;
-  canvas.width = S;
-  canvas.height = S;
+// ── Module singleton: never use display:none (breaks drawImage source in some browsers) ──
+let atlasCacheCanvas: HTMLCanvasElement | null = null;
+let atlasBuildPromise: Promise<HTMLCanvasElement> | null = null;
+/** Latest progress handler so prefetch + panel share one build and the UI still updates. */
+let atlasTerrainProgressCb: ((pct: number) => void) | null = null;
 
-  for (let wy = 0; wy < MAP_H; wy += TERRAIN_STEP) {
-    for (let wx = 0; wx < MAP_W; wx += TERRAIN_STEP) {
-      const code = sampleBaseTerrainCode(wx, wy);
-      const idx = Math.min(ATLAS_PALETTE.length - 1, Math.max(0, Math.floor(code)));
-      const [r, g, b] = ATLAS_PALETTE[idx] ?? [60, 60, 65];
-      const sx = (wx / MAP_W) * S;
-      const sy = (wy / MAP_H) * S;
-      const sw = (TERRAIN_STEP / MAP_W) * S + 0.6;
-      const sh = (TERRAIN_STEP / MAP_H) * S + 0.6;
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-      ctx.fillRect(sx, sy, sw, sh);
-    }
-  }
+function drawAtlasOverlayLayers(ctx: CanvasRenderingContext2D): void {
+  const S = CACHE_SIZE;
 
   ctx.fillStyle = 'rgba(80, 160, 220, 0.82)';
   for (const [id, c] of Object.entries(LOCATION_COORDS)) {
@@ -115,8 +105,8 @@ function buildAtlasCache(canvas: HTMLCanvasElement): void {
     ctx.fill();
   }
 
-  ctx.strokeStyle = 'rgba(160, 140, 88, 0.42)';
-  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(200, 175, 110, 0.55)';
+  ctx.lineWidth = 1.4;
   for (const [a, b] of CONNECTIONS) {
     const ca = LOCATION_COORDS[a];
     const cb = LOCATION_COORDS[b];
@@ -132,13 +122,13 @@ function buildAtlasCache(canvas: HTMLCanvasElement): void {
     if (!coord) continue;
     const sx = (coord.x / MAP_W) * S;
     const sy = (coord.y / MAP_H) * S;
-    ctx.fillStyle = '#b8943c';
+    ctx.fillStyle = '#c9a038';
     ctx.beginPath();
     ctx.arc(sx, sy, 4, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  ctx.fillStyle = 'rgba(130, 175, 130, 0.65)';
+  ctx.fillStyle = 'rgba(130, 175, 130, 0.75)';
   for (const h of getHamlets()) {
     const hx = (h.x / MAP_W) * S;
     const hy = (h.y / MAP_H) * S;
@@ -151,7 +141,7 @@ function buildAtlasCache(canvas: HTMLCanvasElement): void {
     ctx.save();
     ctx.translate(esx, esy);
     ctx.fillStyle = 'rgba(48, 190, 175, 0.92)';
-    ctx.strokeStyle = 'rgba(170, 240, 232, 0.78)';
+    ctx.strokeStyle = 'rgba(170, 240, 232, 0.85)';
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(0, 7);
@@ -163,6 +153,74 @@ function buildAtlasCache(canvas: HTMLCanvasElement): void {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/**
+ * Builds atlas once per session; terrain is time-sliced across frames so E / G does not freeze the tab.
+ */
+function ensureAtlasCache(onProgress: (pct: number) => void): Promise<HTMLCanvasElement> {
+  atlasTerrainProgressCb = onProgress;
+  if (atlasCacheCanvas && atlasCacheCanvas.width === CACHE_SIZE) {
+    return Promise.resolve(atlasCacheCanvas);
+  }
+  if (atlasBuildPromise) return atlasBuildPromise;
+
+  atlasBuildPromise = new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = CACHE_SIZE;
+    canvas.height = CACHE_SIZE;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) {
+      atlasBuildPromise = null;
+      reject(new Error('2d context unavailable'));
+      return;
+    }
+
+    let wy = 0;
+    const S = CACHE_SIZE;
+
+    const tick = () => {
+      const t0 = performance.now();
+      while (wy < MAP_H && performance.now() - t0 < TERRAIN_SLICE_MS) {
+        for (let wx = 0; wx < MAP_W; wx += TERRAIN_STEP) {
+          const code = sampleBaseTerrainCode(wx, wy);
+          const idx = Math.min(ATLAS_PALETTE.length - 1, Math.max(0, Math.floor(code)));
+          const [r, g, b] = ATLAS_PALETTE[idx] ?? [60, 60, 65];
+          const sx = (wx / MAP_W) * S;
+          const sy = (wy / MAP_H) * S;
+          const sw = (TERRAIN_STEP / MAP_W) * S + 0.6;
+          const sh = (TERRAIN_STEP / MAP_H) * S + 0.6;
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(sx, sy, sw, sh);
+        }
+        wy += TERRAIN_STEP;
+      }
+
+      atlasTerrainProgressCb?.(Math.min(99, Math.round((wy / MAP_H) * 100)));
+
+      if (wy >= MAP_H) {
+        drawAtlasOverlayLayers(ctx);
+        atlasCacheCanvas = canvas;
+        atlasBuildPromise = null;
+        atlasTerrainProgressCb?.(100);
+        resolve(canvas);
+        return;
+      }
+
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  });
+
+  return atlasBuildPromise;
+}
+
+/** Warm the terrain bitmap during idle time so opening the atlas (E) is usually instant. */
+export function prefetchAtlasTerrainCache(): void {
+  ensureAtlasCache(() => {
+    /* progress shown when panel opens with ensureAtlasCache's callback */
+  });
 }
 
 function worldToScreen(
@@ -186,28 +244,44 @@ export default function RealmAtlasPanel() {
   const facingDir = useGameStore(s => s.facingDir);
   const visitedLocations = useGameStore(s => s.visitedLocations);
 
-  const cacheRef = useRef<HTMLCanvasElement | null>(null);
   const displayRef = useRef<HTMLCanvasElement | null>(null);
-  const cacheReadyRef = useRef(false);
   const dragRef = useRef<{ active: boolean; lx: number; ly: number }>({ active: false, lx: 0, ly: 0 });
 
   const [camX, setCamX] = useState(() => playerX);
   const [camY, setCamY] = useState(() => playerY);
   const [zoomMul, setZoomMul] = useState(1);
+  const [atlasReady, setAtlasReady] = useState(!!atlasCacheCanvas);
+  const [buildPct, setBuildPct] = useState(0);
 
   const visible = overlay === 'map' && (phase === 'playing' || phase === 'sailing');
 
-  useLayoutEffect(() => {
-    if (!visible || !cacheRef.current) return;
-    if (cacheReadyRef.current) return;
-    buildAtlasCache(cacheRef.current);
-    cacheReadyRef.current = true;
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    setAtlasReady(!!atlasCacheCanvas);
+    setBuildPct(atlasCacheCanvas ? 100 : 0);
+
+    ensureAtlasCache(pct => {
+      if (!cancelled) setBuildPct(pct);
+    })
+      .then(() => {
+        if (cancelled) return;
+        setAtlasReady(true);
+        setBuildPct(100);
+      })
+      .catch(() => {
+        if (!cancelled) setAtlasReady(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [visible]);
 
   const redraw = useCallback(() => {
     const display = displayRef.current;
-    const cache = cacheRef.current;
-    if (!display || !cache || !cacheReadyRef.current) return;
+    const cache = atlasCacheCanvas;
+    if (!display || !cache || !atlasReady) return;
     const ctx = display.getContext('2d');
     if (!ctx) return;
     const dw = display.width;
@@ -232,14 +306,14 @@ export default function RealmAtlasPanel() {
     const sy1 = Math.min(CACHE_SIZE, sy0 + sh);
     const srcW = sx1 - sx;
     const srcH = sy1 - sy;
-    if (srcW <= 0 || srcH <= 0) return;
 
-    const dstX = ((sx - sx0) / sw) * dw;
-    const dstY = ((sy - sy0) / sh) * dh;
-    const dstW = (srcW / sw) * dw;
-    const dstH = (srcH / sh) * dh;
-
-    ctx.drawImage(cache, sx, sy, srcW, srcH, dstX, dstY, dstW, dstH);
+    if (srcW > 0 && srcH > 0) {
+      const dstX = ((sx - sx0) / sw) * dw;
+      const dstY = ((sy - sy0) / sh) * dh;
+      const dstW = (srcW / sw) * dw;
+      const dstH = (srcH / sh) * dh;
+      ctx.drawImage(cache, sx, sy, srcW, srcH, dstX, dstY, dstW, dstH);
+    }
 
     const fontPx = Math.max(9, Math.min(16, 10 + zoomMul * 2));
     ctx.font = `${fontPx}px sans-serif`;
@@ -255,7 +329,7 @@ export default function RealmAtlasPanel() {
       ctx.fillStyle = visited ? 'rgba(220, 190, 120, 0.95)' : 'rgba(140, 140, 150, 0.85)';
       ctx.strokeStyle = 'rgba(0,0,0,0.55)';
       ctx.lineWidth = 3;
-      const label = loc.name.length > 14 ? `${loc.name.slice(0, 12)}…` : loc.name;
+      const label = loc.name.length > 18 ? `${loc.name.slice(0, 16)}…` : loc.name;
       ctx.strokeText(label, sxp, syp - 10);
       ctx.fillText(label, sxp, syp - 10);
     }
@@ -281,26 +355,28 @@ export default function RealmAtlasPanel() {
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.lineWidth = 1;
     ctx.stroke();
-  }, [camX, camY, zoomMul, playerX, playerY, facingDir, visitedLocations]);
+  }, [camX, camY, zoomMul, playerX, playerY, facingDir, visitedLocations, atlasReady]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !atlasReady) return;
     redraw();
-  }, [visible, redraw]);
+  }, [visible, atlasReady, redraw]);
 
   const onWheel = (e: React.WheelEvent) => {
+    if (!atlasReady) return;
     e.preventDefault();
     const d = e.deltaY > 0 ? 0.92 : 1.09;
     setZoomMul(z => Math.min(8, Math.max(0.35, z * d)));
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (!atlasReady) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = { active: true, lx: e.clientX, ly: e.clientY };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current.active) return;
+    if (!atlasReady || !dragRef.current.active) return;
     const dx = e.clientX - dragRef.current.lx;
     const dy = e.clientY - dragRef.current.ly;
     dragRef.current.lx = e.clientX;
@@ -339,14 +415,16 @@ export default function RealmAtlasPanel() {
               <span className="font-mono-game text-[10px] text-mist/70">Scroll zoom · drag pan</span>
               <button
                 type="button"
-                className="px-2 py-0.5 border border-gold/25 font-mono-game text-[10px] text-gold hover:bg-gold/10"
+                className="px-2 py-0.5 border border-gold/25 font-mono-game text-[10px] text-gold hover:bg-gold/10 disabled:opacity-40"
+                disabled={!atlasReady}
                 onClick={() => setZoomMul(z => Math.min(8, z * 1.25))}
               >
                 +
               </button>
               <button
                 type="button"
-                className="px-2 py-0.5 border border-gold/25 font-mono-game text-[10px] text-gold hover:bg-gold/10"
+                className="px-2 py-0.5 border border-gold/25 font-mono-game text-[10px] text-gold hover:bg-gold/10 disabled:opacity-40"
+                disabled={!atlasReady}
                 onClick={() => setZoomMul(z => Math.max(0.35, z / 1.25))}
               >
                 −
@@ -364,20 +442,33 @@ export default function RealmAtlasPanel() {
             Roads, ports, settlements, road camps, and cave mouths across the whole realm. Unvisited places show dimmer
             labels until you discover them.
           </p>
-          <canvas
-            ref={displayRef}
-            width={920}
-            height={560}
-            className="w-full max-h-[72vh] border border-gold/20 bg-black/60 cursor-grab active:cursor-grabbing touch-none"
-            style={{ imageRendering: 'pixelated' }}
-            onWheel={onWheel}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerLeave={onPointerUp}
-          />
+          <div className="relative w-full border border-gold/20 rounded bg-black/40 max-h-[72vh]">
+            {!atlasReady && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-ink/90 rounded">
+                <p className="font-mono-game text-xs text-gold">Drawing realm terrain…</p>
+                <div className="w-48 h-1.5 bg-ash/40 rounded overflow-hidden">
+                  <div
+                    className="h-full bg-gold/70 transition-[width] duration-150"
+                    style={{ width: `${buildPct}%` }}
+                  />
+                </div>
+                <p className="font-mono-game text-[10px] text-mist/60">{buildPct}%</p>
+              </div>
+            )}
+            <canvas
+              ref={displayRef}
+              width={920}
+              height={560}
+              className={`w-full max-h-[72vh] block touch-none ${atlasReady ? 'cursor-grab active:cursor-grabbing' : 'cursor-wait pointer-events-none opacity-40'}`}
+              style={{ imageRendering: 'pixelated' }}
+              onWheel={onWheel}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerLeave={onPointerUp}
+            />
+          </div>
         </div>
-        <canvas ref={cacheRef} className="hidden" width={CACHE_SIZE} height={CACHE_SIZE} aria-hidden />
       </motion.div>
     </AnimatePresence>
   );

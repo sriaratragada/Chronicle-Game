@@ -3,6 +3,8 @@ import { serializeEntities, deserializeEntities } from './worldEntities';
 
 const SAVE_KEY_PREFIX = 'chronicle_save_slot_';
 const MAX_SLOTS = 4;
+/** Bumped when new persisted fields require defaults on load (e.g. simEventLog). */
+export const SAVE_DATA_VERSION = 2;
 
 export interface SaveSlotInfo {
   slot: number;
@@ -44,7 +46,7 @@ export function saveToSlot(slot: number) {
   const state = useGameStore.getState();
   const entityJson = serializeEntities();
   const data = {
-    version: 1,
+    version: SAVE_DATA_VERSION,
     timestamp: Date.now(),
     state: {
       ...state,
@@ -80,6 +82,9 @@ export function loadFromSlot(slot: number): boolean {
       if (v !== undefined && typeof v !== 'function') clean[k] = v;
     }
     clean.bootError = null;
+    if (!Array.isArray(clean.simEventLog)) clean.simEventLog = [];
+    if (clean.progressionVersion === undefined) clean.progressionVersion = 0;
+    if (!Array.isArray(clean.milestonesUnlocked)) clean.milestonesUnlocked = [];
     useGameStore.setState(clean as any);
     return true;
   } catch {

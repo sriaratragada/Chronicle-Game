@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { SEASON_NAMES } from '@/lib/gameData';
@@ -20,7 +20,7 @@ import SaveLoadPanel from '@/components/game/SaveLoadPanel';
 import Minimap from '@/components/game/Minimap';
 import BuildPanel from '@/components/game/BuildPanel';
 import FastTravelPanel from '@/components/game/FastTravelPanel';
-import RealmAtlasPanel from '@/components/game/RealmAtlasPanel';
+import RealmAtlasPanel, { prefetchAtlasTerrainCache } from '@/components/game/RealmAtlasPanel';
 import CampStashPanel from '@/components/game/CampStashPanel';
 import BattleScreen from '@/components/game/BattleScreen';
 
@@ -43,6 +43,7 @@ function DialogueOverlay() {
 
 export default function GameScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
+  const atlasPrefetchStarted = useRef(false);
 
   const phase     = useGameStore(s => s.phase);
   const chronicle = useGameStore(s => s.chronicle);
@@ -51,6 +52,18 @@ export default function GameScreen() {
   const startGame = useGameStore(s => s.startGame);
   const lastEntry = chronicle[chronicle.length - 1] ?? null;
   const tutorialObjective = useGameStore(s => s.tutorialObjective);
+
+  useEffect(() => {
+    if (atlasPrefetchStarted.current) return;
+    if (phase !== 'playing' && phase !== 'sailing') return;
+    atlasPrefetchStarted.current = true;
+    const run = () => prefetchAtlasTerrainCache();
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(run, { timeout: 3500 });
+    } else {
+      window.setTimeout(run, 450);
+    }
+  }, [phase]);
 
   const tutorialLines = [
     'Gather wood from trees (E) — you need 3 wood for a club.',

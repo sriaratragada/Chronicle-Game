@@ -61,11 +61,73 @@ export interface Location {
   mapY?: number;
 }
 
+export type ChronicleEntryType =
+  | 'action'
+  | 'world'
+  | 'npc'
+  | 'faction'
+  | 'discovery'
+  | 'environment'
+  | 'sim';
+
 export interface ChronicleEntry {
   tick: number;
   season: Season;
   text: string;
-  type: 'action' | 'world' | 'npc' | 'faction' | 'discovery' | 'environment';
+  type: ChronicleEntryType;
+  /** Links this line to SimEvent.id in simEventLog for detail UI. */
+  eventId?: string;
+  /** Short structured preview; full deltas live on the linked sim event. */
+  payload?: { deltasPreview?: string };
+}
+
+/** Structured world / player events for progression, causality, and future graph export. */
+export type SimEventSource = 'world_tick' | 'player' | 'system';
+
+export type SimEventCategory =
+  | 'regional'
+  | 'economy'
+  | 'faction'
+  | 'caravan'
+  | 'combat'
+  | 'trade'
+  | 'quest'
+  | 'exploration';
+
+export type SimEventVisibility = 'silent' | 'hud' | 'chronicle';
+
+export type SimDeltaDomain = 'regional' | 'market' | 'faction' | 'player_gold' | 'reputation' | 'player_inventory';
+
+export interface SimDelta {
+  domain: SimDeltaDomain;
+  key: string;
+  before?: number;
+  after?: number;
+  locationId?: string;
+  factionId?: string;
+  itemId?: string;
+}
+
+export interface SimEventLink {
+  fromKind: string;
+  fromId: string;
+  toKind: string;
+  toId: string;
+  relation: string;
+}
+
+export interface SimEvent {
+  schemaVersion: number;
+  id: string;
+  worldTime: number;
+  gameTick: number;
+  season: Season;
+  source: SimEventSource;
+  category: SimEventCategory;
+  summary: string;
+  deltas: SimDelta[];
+  links?: SimEventLink[];
+  visibility: SimEventVisibility;
 }
 
 export interface GameChoice {
@@ -229,6 +291,12 @@ export interface GameState {
 
   // Chronicle & events
   chronicle: ChronicleEntry[];
+  /** Append-only simulation log (capped); spine for progression and audits. */
+  simEventLog: SimEvent[];
+  /** Bump when milestone tables change (save migration). */
+  progressionVersion: number;
+  /** Unlocked milestone ids (stub; evaluated later). */
+  milestonesUnlocked: string[];
   currentEvent: GameEvent | null;
   lastResult: string | null;
   visitedLocations: string[];

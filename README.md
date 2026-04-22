@@ -147,7 +147,7 @@ The intended AI trajectory extends beyond dialogue:
 - **Regional memory models** so settlements “remember” player impact
 - **Macro↔micro coupling** where individual choices accumulate into regional economic and political shifts
 
-In short: AI is positioned as both **character intelligence** and **world intelligence**, aiming for an almost real-life simulation feel across macro (regional systems) and micro (individual behavior) scales.
+In short: AI is positioned as both **character intelligence** and **world intelligence**, aiming for a near-real-life simulation feel across macro (regional systems) and micro (individual behavior) scales.
 
 ## Tech Stack
 

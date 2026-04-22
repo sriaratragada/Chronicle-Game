@@ -22,6 +22,7 @@ export default function HelpPanel() {
     { key: 'M', desc: 'Market / Shop', alt: 'Buy and sell at any settlement' },
     { key: 'B', desc: 'Build / Housing', alt: 'Purchase plots in capitals' },
     { key: 'T', desc: 'Fast Travel', alt: 'Teleport to visited locations' },
+    { key: 'G', desc: 'Realm Atlas', alt: 'Full world map (pan, zoom). Or select Realm Atlas in the hotbar and press E' },
     { key: 'P', desc: 'Player Panel', alt: 'Reputation & faction standing' },
     { key: 'C', desc: 'Chronicle', alt: 'Event history log' },
     { key: 'F5', desc: 'Save/Load', alt: 'Save or load game (4 slots)' },

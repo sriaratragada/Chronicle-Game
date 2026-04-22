@@ -3,7 +3,8 @@ import { SEASON_NAMES, SEASON_ICONS } from '@/lib/gameData';
 import { motion } from 'framer-motion';
 
 export default function ChronicleView() {
-  const { chronicle, playerTitle } = useGameStore();
+  const chronicle = useGameStore(s => s.chronicle);
+  const playerTitle = useGameStore(s => s.playerTitle);
   const backToGame = useGameStore(s => s.backToGame);
 
   const typeColors: Record<string, string> = {

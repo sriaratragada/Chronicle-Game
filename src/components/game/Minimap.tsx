@@ -130,8 +130,24 @@ export default function Minimap() {
     for (const ent of nearEnts) {
       const esx = (ent.x / MAP_W) * MM_SIZE;
       const esy = (ent.y / MAP_H) * MM_SIZE;
+      if (ent.kind === 'cave_entrance') {
+        ctx.save();
+        ctx.translate(esx, esy);
+        ctx.fillStyle = 'rgba(48, 190, 175, 0.95)';
+        ctx.strokeStyle = 'rgba(160, 240, 230, 0.85)';
+        ctx.lineWidth = 0.45;
+        ctx.beginPath();
+        ctx.moveTo(0, 2.2);
+        ctx.lineTo(-2.2, 0);
+        ctx.lineTo(0, -2.2);
+        ctx.lineTo(2.2, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+        continue;
+      }
       if (['wolf', 'bandit', 'warband', 'bear'].includes(ent.kind)) ctx.fillStyle = 'rgba(200,50,50,0.6)';
-      else if (ent.kind === 'cave_entrance') ctx.fillStyle = 'rgba(28,28,44,0.92)';
       else if (['boat'].includes(ent.kind)) ctx.fillStyle = 'rgba(80,130,200,0.6)';
       else if (['horse'].includes(ent.kind)) ctx.fillStyle = 'rgba(180,140,60,0.6)';
       else if (['caravan'].includes(ent.kind)) ctx.fillStyle = 'rgba(200,180,80,0.6)';

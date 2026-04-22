@@ -77,12 +77,22 @@ function halfExtentForType(type: string): number {
   }
 }
 
+const layoutCenterCache = new Map<string, { x: number; y: number }>();
+const roadKeysBySettlement = new Map<string, Set<number>>();
+
 /** Logical center for layout (off main trail when possible). */
 export function getSettlementLayoutCenter(settlementId: string): { x: number; y: number } {
+  const hit = layoutCenterCache.get(settlementId);
+  if (hit) return hit;
+
   const base = LOCATION_COORDS[settlementId];
   if (!base) return { x: 0, y: 0 };
   const meta = getSettlementMeta(settlementId);
-  if (!meta) return { x: base.x, y: base.y };
+  if (!meta) {
+    const r = { x: base.x, y: base.y };
+    layoutCenterCache.set(settlementId, r);
+    return r;
+  }
 
   const rs = ensureRoads();
   const ang = layoutHash(settlementId, 1) * Math.PI * 2;
@@ -122,10 +132,12 @@ export function getSettlementLayoutCenter(settlementId: string): { x: number; y:
     }
   }
 
-  return { x: cx, y: cy };
+  const out = { x: cx, y: cy };
+  layoutCenterCache.set(settlementId, out);
+  return out;
 }
 
-function collectRoadKeysForSettlement(settlementId: string): Set<number> {
+function buildRoadKeysForSettlementUncached(settlementId: string): Set<number> {
   const keys = new Set<number>();
   const meta = getSettlementMeta(settlementId);
   const base = LOCATION_COORDS[settlementId];
@@ -211,10 +223,25 @@ function collectRoadKeysForSettlement(settlementId: string): Set<number> {
   return keys;
 }
 
+function collectRoadKeysForSettlement(settlementId: string): Set<number> {
+  let cached = roadKeysBySettlement.get(settlementId);
+  if (cached) return cached;
+  cached = buildRoadKeysForSettlementUncached(settlementId);
+  roadKeysBySettlement.set(settlementId, cached);
+  return cached;
+}
+
 let _unionLocalRoads: Set<number> | null = null;
 
 export function invalidateSettlementRoadCache(): void {
   _unionLocalRoads = null;
+  layoutCenterCache.clear();
+  roadKeysBySettlement.clear();
+}
+
+/** Build union of all settlement-local road cells once (cached). Call during boot before mass getTileAt. */
+export function warmSettlementRoadIndexes(): void {
+  ensureUnionLocalRoads();
 }
 
 function ensureUnionLocalRoads(): Set<number> {

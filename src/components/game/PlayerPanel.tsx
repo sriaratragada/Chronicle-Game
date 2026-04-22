@@ -1,9 +1,20 @@
 import { useGameStore } from '@/lib/gameStore';
 import { REP_LABELS, FACTION_INFO, SEASON_NAMES, SEASON_ICONS } from '@/lib/gameData';
 import { motion } from 'framer-motion';
+import { useShallow } from 'zustand/react/shallow';
 
 export default function PlayerPanel() {
-  const { reputation, factions, playerTitle, tick, season, currentLocation, visitedLocations } = useGameStore();
+  const { reputation, factions, playerTitle, tick, season, currentLocation, visitedLocations } = useGameStore(
+    useShallow(s => ({
+      reputation: s.reputation,
+      factions: s.factions,
+      playerTitle: s.playerTitle,
+      tick: s.tick,
+      season: s.season,
+      currentLocation: s.currentLocation,
+      visitedLocations: s.visitedLocations,
+    })),
+  );
   const viewChronicle = useGameStore(s => s.viewChronicle);
 
   return (

@@ -343,17 +343,36 @@ function drawHumanPlayer(ctx: CanvasRenderingContext2D, sx: number, sy: number, 
   ctx.strokeStyle = 'rgba(200,170,80,0.25)'; ctx.lineWidth = 1; ctx.stroke();
 }
 
+/** Layered arcs + destination-out — much cheaper per frame than createRadialGradient. */
+function punchVisionHole(fogCtx: CanvasRenderingContext2D, lx: number, ly: number, outerPx: number) {
+  fogCtx.save();
+  fogCtx.globalCompositeOperation = 'destination-out';
+  const rings = [1.0, 0.74, 0.5, 0.28];
+  const alphas = [0.18, 0.22, 0.28, 0.42];
+  for (let i = 0; i < rings.length; i++) {
+    fogCtx.fillStyle = `rgba(0,0,0,${alphas[i]})`;
+    fogCtx.beginPath();
+    fogCtx.arc(lx, ly, outerPx * rings[i]!, 0, Math.PI * 2);
+    fogCtx.fill();
+  }
+  fogCtx.restore();
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 export default function WorldMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fogCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const vigCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const visibleObjectsRef = useRef<WorldObject[]>([]);
+  const visibleEntitiesRef = useRef<AmbientEntity[]>([]);
   const visRef = useRef({ x: 0, y: 0, initialised: false });
   const moveDirRef = useRef<MoveDir>('down');
 
   // Chunk canvas cache: key = chunkY * NUM_CHUNKS_X + chunkX
   const chunksRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const seasonRef = useRef<Season>('thaw');
+  const lastRafTsRef = useRef(0);
 
   const stateRef = useRef({
     playerX: 0, playerY: 0,
@@ -469,6 +488,28 @@ export default function WorldMap() {
       const ctx = canvas!.getContext('2d');
       if (!ctx) { animId = requestAnimationFrame(render); return; }
 
+      // #region agent log
+      const prevTs = lastRafTsRef.current;
+      lastRafTsRef.current = timestamp;
+      if (prevTs > 0) {
+        const gap = timestamp - prevTs;
+        if (gap > 38) {
+          fetch('http://127.0.0.1:7891/ingest/68e880b8-e871-43be-946d-757508d96764', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a7e92f' },
+            body: JSON.stringify({
+              sessionId: 'a7e92f',
+              hypothesisId: 'B',
+              location: 'WorldMap.tsx:render',
+              message: 'raf_frame_gap_ms',
+              data: { gapMs: Math.round(gap * 10) / 10 },
+              timestamp: Date.now(),
+            }),
+          }).catch(() => {});
+        }
+      }
+      // #endregion
+
       const { playerX, playerY, season, visitedLocations, nearestLocation, zoom, canvasW, canvasH } = stateRef.current;
 
       if (canvas!.width !== canvasW || canvas!.height !== canvasH) {
@@ -501,15 +542,16 @@ export default function WorldMap() {
 
       ctx.imageSmoothingEnabled = false;
 
-      // Collect visible objects and entities from chunks
-      const visibleObjects: WorldObject[] = [];
-      const visibleEntities: AmbientEntity[] = [];
+      const visibleObjects = visibleObjectsRef.current;
+      const visibleEntities = visibleEntitiesRef.current;
+      visibleObjects.length = 0;
+      visibleEntities.length = 0;
 
       for (let cy = chunkStartY; cy <= chunkEndY; cy++) {
         for (let cx = chunkStartX; cx <= chunkEndX; cx++) {
           const key = cy * NUM_CHUNKS_X + cx;
+          const chunkData = getChunkData(cx, cy);
           if (!chunksRef.current.has(key)) {
-            const chunkData = getChunkData(cx, cy);
             chunksRef.current.set(key, bakeChunkCanvas(chunkData, season));
           }
           const chunkCanvas = chunksRef.current.get(key)!;
@@ -517,10 +559,8 @@ export default function WorldMap() {
           const sy = (cy * CHUNK_SIZE - camY) * zoom;
           ctx.drawImage(chunkCanvas, sx, sy, CHUNK_SIZE * zoom, CHUNK_SIZE * zoom);
 
-          // Gather objects/entities from this chunk's data
-          const data = getChunkData(cx, cy);
-          visibleObjects.push(...data.objects);
-          visibleEntities.push(...data.entities);
+          for (const o of chunkData.objects) visibleObjects.push(o);
+          for (const e of chunkData.entities) visibleEntities.push(e);
         }
       }
 
@@ -578,10 +618,35 @@ export default function WorldMap() {
                 case 'horse':
                   ctx.fillStyle = '#8a5a30'; ctx.fillRect(-z * 0.8, -z * 0.4, z * 1.6, z * 0.8); ctx.fillRect(-z * 1.0, -z * 0.8, z * 0.5, z * 0.5);
                   break;
-                case 'cave_entrance':
-                  ctx.fillStyle = '#2a2a2a'; ctx.beginPath(); ctx.arc(0, 0, z * 1.2, 0, Math.PI * 2); ctx.fill();
-                  ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(0, 0, z * 0.7, 0, Math.PI * 2); ctx.fill();
+                case 'cave_entrance': {
+                  // Distinct "maw" silhouette + teal rim so caves read as dungeons, not generic dots
+                  const s = z * 1.35;
+                  ctx.strokeStyle = 'rgba(72, 200, 190, 0.92)';
+                  ctx.lineWidth = Math.max(1.2, z * 0.22);
+                  ctx.beginPath();
+                  ctx.moveTo(0, s * 0.35);
+                  ctx.lineTo(-s * 0.95, -s * 0.2);
+                  ctx.lineTo(-s * 0.35, -s * 0.95);
+                  ctx.lineTo(0, -s * 0.55);
+                  ctx.lineTo(s * 0.35, -s * 0.95);
+                  ctx.lineTo(s * 0.95, -s * 0.2);
+                  ctx.closePath();
+                  ctx.fillStyle = '#141018';
+                  ctx.fill();
+                  ctx.stroke();
+                  ctx.fillStyle = '#0a080c';
+                  ctx.beginPath();
+                  ctx.moveTo(0, s * 0.15);
+                  ctx.lineTo(-s * 0.55, -s * 0.35);
+                  ctx.lineTo(s * 0.55, -s * 0.35);
+                  ctx.closePath();
+                  ctx.fill();
+                  ctx.fillStyle = '#2a2830';
+                  ctx.fillRect(-s * 0.12, -s * 0.92, s * 0.1, s * 0.28);
+                  ctx.fillRect(0, -s * 0.88, s * 0.11, s * 0.24);
+                  ctx.fillRect(s * 0.18, -s * 0.85, s * 0.09, s * 0.22);
                   break;
+                }
                 case 'wolf':
                   ctx.fillStyle = '#606060'; ctx.fillRect(-z * 0.8, -z * 0.4, z * 1.6, z * 0.8);
                   break;
@@ -668,24 +733,18 @@ export default function WorldMap() {
 
       const playerSX = (playerX - camX) * zoom;
       const playerSY = (playerY - camY) * zoom;
-      const addReveal = (lx: number, ly: number, inner: number, outer: number) => {
-        const g = fogCtx.createRadialGradient(lx, ly, 0, lx, ly, outer * zoom);
-        g.addColorStop(0, 'rgba(0,0,0,1.0)');
-        g.addColorStop(inner / outer, 'rgba(0,0,0,0.85)');
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        fogCtx.fillStyle = g;
-        fogCtx.beginPath(); fogCtx.arc(lx, ly, outer * zoom, 0, Math.PI * 2); fogCtx.fill();
-      };
-      addReveal(playerSX, playerSY, 60, 110);
+      punchVisionHole(fogCtx, playerSX, playerSY, 110 * zoom);
       for (const locId of visitedLocations) {
         const coord = LOCATION_COORDS[locId];
         if (!coord) continue;
         const lsx = (coord.x - camX) * zoom;
         const lsy = (coord.y - camY) * zoom;
-        addReveal(lsx, lsy, 80, 160);
+        punchVisionHole(fogCtx, lsx, lsy, 160 * zoom);
       }
       fogCtx.globalCompositeOperation = 'source-over';
       ctx.drawImage(fog, 0, 0);
+
+      const visitedSet = new Set(visitedLocations);
 
       // ── Location markers ─────────────────────────────────────────────
       for (const loc of LOCATIONS) {
@@ -696,7 +755,7 @@ export default function WorldMap() {
         if (lsx < -50 || lsx > canvasW + 50 || lsy < -50 || lsy > canvasH + 50) continue;
 
         const isNear = nearestLocation === loc.id;
-        const isVisited = visitedLocations.includes(loc.id);
+        const isVisited = visitedSet.has(loc.id);
         const markerR = isNear ? 14 : 9;
 
         if (isNear) {
@@ -743,7 +802,7 @@ export default function WorldMap() {
 
         ctx.save(); ctx.translate(edgeX, edgeY); ctx.rotate(angle);
         ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-5, -5); ctx.lineTo(-5, 5); ctx.closePath();
-        ctx.fillStyle = visitedLocations.includes(loc.id) ? 'rgba(200,170,80,0.7)' : 'rgba(140,140,140,0.4)';
+        ctx.fillStyle = visitedSet.has(loc.id) ? 'rgba(200,170,80,0.7)' : 'rgba(140,140,140,0.4)';
         ctx.fill(); ctx.restore();
 
         ctx.font = '8px "Courier Prime", monospace';
@@ -761,10 +820,30 @@ export default function WorldMap() {
         ctx.fillStyle = 'rgba(255,200,140,0.08)'; ctx.fillRect(0, 0, canvasW, canvasH);
       }
 
-      // ── Vignette ─────────────────────────────────────────────────────
-      const vig = ctx.createRadialGradient(canvasW / 2, canvasH / 2, canvasH * 0.3, canvasW / 2, canvasH / 2, canvasH * 0.85);
-      vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.55)');
-      ctx.fillStyle = vig; ctx.fillRect(0, 0, canvasW, canvasH);
+      // ── Vignette (cached; gradient is expensive — only rebuild on resize) ──
+      let vigEl = vigCanvasRef.current;
+      if (!vigEl) {
+        vigEl = document.createElement('canvas');
+        vigCanvasRef.current = vigEl;
+      }
+      if (vigEl.width !== canvasW || vigEl.height !== canvasH) {
+        vigEl.width = canvasW;
+        vigEl.height = canvasH;
+        const vctx = vigEl.getContext('2d')!;
+        const g = vctx.createRadialGradient(
+          canvasW / 2,
+          canvasH / 2,
+          canvasH * 0.3,
+          canvasW / 2,
+          canvasH / 2,
+          canvasH * 0.85,
+        );
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(1, 'rgba(0,0,0,0.55)');
+        vctx.fillStyle = g;
+        vctx.fillRect(0, 0, canvasW, canvasH);
+      }
+      ctx.drawImage(vigEl, 0, 0);
 
       ctx.font = '10px "Courier Prime", monospace';
       ctx.fillStyle = 'rgba(200,185,140,0.4)'; ctx.textAlign = 'right'; ctx.textBaseline = 'top';

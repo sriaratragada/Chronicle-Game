@@ -55,6 +55,7 @@ export function saveToSlot(slot: number) {
       advanceTick: undefined, setOverlay: undefined, advanceTutorial: undefined,
       performEnvironmentAction: undefined, interactEntity: undefined,
       battleStrikeAction: undefined, battleGuardAction: undefined, battleFleeAction: undefined,
+      clearBootError: undefined,
     },
     entities: entityJson,
   };
@@ -78,6 +79,7 @@ export function loadFromSlot(slot: number): boolean {
     for (const [k, v] of Object.entries(saved)) {
       if (v !== undefined && typeof v !== 'function') clean[k] = v;
     }
+    clean.bootError = null;
     useGameStore.setState(clean as any);
     return true;
   } catch {

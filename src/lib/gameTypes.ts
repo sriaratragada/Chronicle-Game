@@ -203,6 +203,9 @@ export interface GameState {
   mounted: MountState;
   activeCaveId: number | null;
 
+  /** Continent at cave entry — drives dungeon ore mix. Cleared when leaving. */
+  activeDungeonContinent: 'auredia' | 'trivalen' | 'uloren' | null;
+
   /** Active overworld cave entity id when in dungeon (for rewards / clears). */
   activeCaveEntityId: string | null;
   /** Per-cave last cleared worldTime (limits spam farming). */
@@ -249,4 +252,7 @@ export interface GameState {
   wildPoiProgress: Record<string, WildPoiProgress>;
   /** Turn-based duel UI state (Pokémon-style encounter). */
   battleState: BattleState | null;
+
+  /** When New Game bootstrap throws, message is set here and `phase` returns to title. */
+  bootError: string | null;
 }

@@ -7,7 +7,7 @@ import {
   isSettlementLocalRoad,
   getSettlementSidewalkPositions,
 } from './settlementLayout';
-import { mergeHamletChunkRoads } from './hamlets';
+import { mergeHamletChunkRoads, invalidateHamletCache } from './hamlets';
 import { mergeWildernessPoisIntoChunk, invalidateWildernessCaches } from './wildernessPoi';
 
 // ── Value noise ────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ export function setSeed(s: number) {
   _roadSet = null;
   invalidateSettlementRoadCache();
   invalidateWildernessCaches();
+  invalidateHamletCache();
 }
 
 function hash(x: number, y: number): number {

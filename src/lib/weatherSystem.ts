@@ -32,18 +32,28 @@ export function tickWeather(
   weather: Record<ContinentId, ContinentWeather>,
   worldTime: number,
 ): Record<ContinentId, ContinentWeather> {
-  const next: Record<ContinentId, ContinentWeather> = {} as any;
-  for (const id of ['auredia', 'trivalen', 'uloren'] as ContinentId[]) {
+  const ids = ['auredia', 'trivalen', 'uloren'] as ContinentId[];
+  let anyChange = false;
+  const next: Record<ContinentId, ContinentWeather> = { ...weather };
+
+  for (const id of ids) {
     const cur = weather[id];
+    let cell: ContinentWeather;
     if (cur.duration > 1) {
-      next[id] = { state: cur.state, duration: cur.duration - 1 };
+      cell = { state: cur.state, duration: cur.duration - 1 };
     } else {
       const options = TRANSITION[cur.state];
-      const pick = options[Math.floor(hashWeather(worldTime * 31 + id.charCodeAt(0)) * options.length)];
+      const pick = options[Math.floor(hashWeather(worldTime * 31 + id.charCodeAt(0)) * options.length)]!;
       const dur = 4 + Math.floor(hashWeather(worldTime * 53 + id.charCodeAt(2)) * 8);
-      next[id] = { state: pick, duration: dur };
+      cell = { state: pick, duration: dur };
+    }
+    if (cell.state !== cur.state || cell.duration !== cur.duration) {
+      next[id] = cell;
+      anyChange = true;
     }
   }
+
+  if (!anyChange) return weather;
   return next;
 }
 

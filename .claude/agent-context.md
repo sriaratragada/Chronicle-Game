@@ -15,13 +15,20 @@ Browser-based top-down 2D open-world RPG prototype: **React 18 + TypeScript + Vi
 
 ## State and loop
 
-- [`src/lib/gameStore.ts`](src/lib/gameStore.ts): single source of truth — movement, combat, inventory, gold, quests, fog, housing, dialogue, tutorial, `minorNpcState`, etc.
-- [`src/lib/worldTicker.ts`](src/lib/worldTicker.ts): `setInterval` advances `worldTime`, weather, hunger, markets, factions, bounty boards, enemy aggro, animal flee, **wildlife respawn** (`respawnWildlifeFarFrom`), resource spawns.
+- [`src/lib/gameStore.ts`](src/lib/gameStore.ts): single source of truth — movement, combat, inventory, gold, quests, fog, housing, dialogue, tutorial, `minorNpcState`, etc. Fresh play calls [`setSeed`](src/lib/mapGenerator.ts) then **`ensureRoads()`** once so road graph is warm before ticks.
+- [`src/lib/worldTicker.ts`](src/lib/worldTicker.ts): `setInterval` (~1.5s) schedules work via **`requestAnimationFrame`**: one light frame, then **`computeWorldTickPhaseA`** (weather, hunger, markets, factions, bounties, quests), then **`runWorldTickPhaseB`** + `applyWorldTickPatch` (caravans, NPC schedules, aggro, animals, resource spawns). Wildlife respawn on `% 100` ticks is deferred to a further rAF. **`worldTickBlocked`** skips sim during events, battle, overlays, etc.
 - **Save/load**: [`src/lib/saveSystem.ts`](src/lib/saveSystem.ts) serializes store slice + [`serializeEntities`](src/lib/worldEntities.ts) for spatial entities.
 
 ## Entities
 
 [`src/lib/worldEntities.ts`](src/lib/worldEntities.ts): spatial hash of `WorldEntity` (`EntityKind` includes boats, caves, resources, animals, **`settlement_npc`**, **`hamlet_npc`**). `initWorldEntities()` runs on `startGame` — boats, horses, caves (random + **guaranteed** near mountain anchors), starter trees/rocks near Ashenford, **INITIAL_NPCS** as settlement NPCs, hamlet residents.
+
+**Tick performance:** maintain **`entitiesByKind`** (lists per kind, updated on `spawnEntity` / `removeEntity`) and **`scheduleNpcBucket`** (settlement + hamlet NPCs only) so `tickCaravanMovement`, `tickWorldNpcSchedules`, and [`getEntitiesByKind`](src/lib/worldEntities.ts) avoid scanning every entity as `N` grows (e.g. periodic resource spawns in the ticker). [`deserializeEntities`](src/lib/worldEntities.ts) must call the same index registration as spawn. **`respawnWildlifeFarFrom`**: ring sampling + attempt cap; **`tickWorldNpcSchedules`**: round-robin with `NPC_SCHEDULE_BUDGET` per tick.
+
+## Performance (overworld)
+
+- **Canvas / HUD**: [`WorldMap.tsx`](src/components/game/WorldMap.tsx) rAF render loop; fog and chunk caching live there and in [`fogOfWar.ts`](src/lib/fogOfWar.ts). [`HudBar.tsx`](src/components/game/HudBar.tsx) narrows subscriptions where possible (e.g. weather by continent).
+- **Do not** reintroduce full `entityById.forEach` scans inside hot tick paths — use kind buckets or spatial queries bounded by radius/chunks.
 
 ## Combat and items
 
@@ -46,6 +53,6 @@ Browser-based top-down 2D open-world RPG prototype: **React 18 + TypeScript + Vi
 
 ## Extension points
 
-- New `EntityKind` → `worldEntities` + `interactEntity` / `WorldMap` draw + combat filters if needed.
+- New `EntityKind` → `worldEntities` (spatial hash + **`entitiesByKind`** on spawn/remove; if tick-scanned, add a bucket or bounded query) + `interactEntity` / `WorldMap` draw + combat filters if needed.
 - New locations → `SETTLEMENTS` + `LOCATIONS` + events in `gameData`.
 - New overlays → `gameTypes.OverlayType` + `OverlayPanel` / `GameScreen`.

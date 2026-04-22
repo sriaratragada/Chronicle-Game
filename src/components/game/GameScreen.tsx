@@ -20,6 +20,7 @@ import SaveLoadPanel from '@/components/game/SaveLoadPanel';
 import Minimap from '@/components/game/Minimap';
 import BuildPanel from '@/components/game/BuildPanel';
 import FastTravelPanel from '@/components/game/FastTravelPanel';
+import RealmAtlasPanel from '@/components/game/RealmAtlasPanel';
 import CampStashPanel from '@/components/game/CampStashPanel';
 import BattleScreen from '@/components/game/BattleScreen';
 
@@ -91,6 +92,7 @@ export default function GameScreen() {
       <SaveLoadPanel />
       <BuildPanel />
       <FastTravelPanel />
+      <RealmAtlasPanel />
       <CampStashPanel />
       {phase !== 'dungeon' && <DialogueOverlay />}
 

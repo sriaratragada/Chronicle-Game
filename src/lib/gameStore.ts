@@ -15,8 +15,9 @@ import {
 import { createWeatherState } from './weatherSystem';
 import { startTicker } from './worldTicker';
 import { INITIAL_NPCS, generateEvents, getWorldEvent, getPlayerTitle, ENVIRONMENT_ACTIONS, FOOD_VALUES, LOCATIONS } from './gameData';
-import { LOCATION_COORDS, isWalkableCode, getTileAt, MAP_W, MAP_H, TILE_NAMES, getContinentAt, getSettlementMeta, setSeed } from './mapGenerator';
-import { getExtendedLocationCoords, isHamletId } from './hamlets';
+import { LOCATION_COORDS, isWalkableCode, getTileAt, MAP_W, MAP_H, TILE_NAMES, getContinentAt, getSettlementMeta, setSeed, ensureRoads } from './mapGenerator';
+import { getExtendedLocationCoords, getHamlets, isHamletId } from './hamlets';
+import { warmSettlementRoadIndexes } from './settlementLayout';
 import { initWorldEntities, getEntitiesNear, spawnEntity, removeEntity, getEntityById, type WorldEntity } from './worldEntities';
 import { createInventory, addToInventory, removeFromInventory, equipItem, unequipItem, craft, canCraft, Inventory, getWeaponDamage, getTotalArmor, countItem } from './craftingSystem';
 import { createSkillTree, addXp, selectPerk, SkillTree } from './skills';
@@ -100,6 +101,7 @@ function makeStarterInventory(): Inventory {
   inv = addToInventory(inv, 'waterskin', 1);
   inv = addToInventory(inv, 'bare_hands', 1);
   inv = addToInventory(inv, 'tent_kit', 1);
+  inv = addToInventory(inv, 'realm_map', 1);
   const bh = inv.slots.findIndex(s => s?.itemId === 'bare_hands');
   if (bh >= 0) inv = equipItem(inv, bh);
   return inv;
@@ -139,9 +141,16 @@ function scheduleAfterPaint(fn: () => void): void {
   }
 }
 
-/** Heavy path: seed, entities, markets, fog — keep off the first title→booting frame. */
-function computeFreshPlayingState(): Partial<GameState> & { phase: 'playing' } {
+/** Seed, global roads, settlement-road union, hamlet list — run in first boot rAF slice. */
+function bootstrapWorldGeometry(): void {
   setSeed(42);
+  ensureRoads();
+  warmSettlementRoadIndexes();
+  void getHamlets();
+}
+
+/** Heavy path after geometry caches: entities, markets, fog — second boot rAF slice. */
+function buildFreshPlayingStatePayload(): Partial<GameState> & { phase: 'playing' } {
   initWorldEntities();
   const npcs = JSON.parse(JSON.stringify(INITIAL_NPCS)) as GameState['npcs'];
   const inv = makeStarterInventory();
@@ -185,6 +194,7 @@ function computeFreshPlayingState(): Partial<GameState> & { phase: 'playing' } {
     facingDir: { dx: 0, dy: 1 },
     mounted: 'none',
     activeCaveId: null,
+    activeDungeonContinent: null,
     activeCaveEntityId: null,
     clearedCaves: {},
     dungeonRun: null,
@@ -247,6 +257,7 @@ interface GameStore extends GameState {
   battleStrikeAction: () => void;
   battleGuardAction: () => void;
   battleFleeAction: () => void;
+  clearBootError: () => void;
 }
 
 const starterInv = makeStarterInventory();
@@ -282,6 +293,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   facingDir: { dx: 0, dy: 1 },
   mounted: 'none' as MountState,
   activeCaveId: null,
+  activeDungeonContinent: null,
   activeCaveEntityId: null,
   clearedCaves: {},
   dungeonRun: null,
@@ -307,22 +319,45 @@ export const useGameStore = create<GameStore>((set, get) => ({
   shopMarketId: null,
   wildPoiProgress: {},
   battleState: null,
+  bootError: null,
 
   startGame: () => {
     const st = get();
     if (st.phase === 'booting') return;
     if (st.phase !== 'title') return;
-    set({ phase: 'booting' });
+    set({ phase: 'booting', bootError: null });
     scheduleAfterPaint(() => {
       try {
-        set(computeFreshPlayingState());
-        startTicker();
+        const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+        bootstrapWorldGeometry();
+        if (import.meta.env.DEV) {
+          console.debug(`[boot] slice1 seed+roads+union+hamlets ${(performance.now() - t0).toFixed(1)}ms`);
+        }
+        scheduleAfterPaint(() => {
+          try {
+            const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
+            set(buildFreshPlayingStatePayload());
+            if (import.meta.env.DEV) {
+              console.debug(`[boot] slice2 entities+state ${(performance.now() - t1).toFixed(1)}ms`);
+            }
+            startTicker();
+          } catch (e) {
+            console.error('startGame failed', e);
+            const msg = e instanceof Error ? e.message : String(e);
+            if (import.meta.env.DEV && e instanceof Error && e.stack) console.error(e.stack);
+            set({ phase: 'title', bootError: msg });
+          }
+        });
       } catch (e) {
         console.error('startGame failed', e);
-        set({ phase: 'title' });
+        const msg = e instanceof Error ? e.message : String(e);
+        if (import.meta.env.DEV && e instanceof Error && e.stack) console.error(e.stack);
+        set({ phase: 'title', bootError: msg });
       }
     });
   },
+
+  clearBootError: () => set({ bootError: null }),
 
   setActiveSlot: (slot: number) => set({ activeSlot: slot }),
 
@@ -348,6 +383,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const newInv = removeFromInventory(state.inventory, slot.itemId, 1);
       const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler drank a ${def.name}.`, type: 'action' };
       set({ health: newHealth, hunger: newHunger, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
+    } else if (slot.itemId === 'realm_map') {
+      if (state.phase !== 'playing' && state.phase !== 'sailing') return;
+      set({ overlay: state.overlay === 'map' ? 'none' : 'map', lastResult: null });
     } else if (slot.itemId === 'tent_kit') {
       if (state.activeCampFireId && getEntityById(state.activeCampFireId)) {
         set({ lastResult: 'You already have a camp pitched.' });
@@ -372,6 +410,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   movePlayer: (dx: number, dy: number) => {
+    // #region agent log
+    const _moveT0 = performance.now();
+    // #endregion
     const state = get();
     if (state.currentEvent || state.lastResult || state.phase === 'dead' || state.phase === 'dungeon' || state.phase === 'battle') return;
 
@@ -463,6 +504,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
       playerTitle: getPlayerTitle(state.reputation as unknown as Record<string, number>),
       tutorialObjective,
     });
+    // #region agent log
+    const _moveMs = performance.now() - _moveT0;
+    if (_moveMs > 10) {
+      fetch('http://127.0.0.1:7891/ingest/68e880b8-e871-43be-946d-757508d96764', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a7e92f' },
+        body: JSON.stringify({
+          sessionId: 'a7e92f',
+          hypothesisId: 'E',
+          location: 'gameStore.ts:movePlayer',
+          message: 'movePlayer_slow_ms',
+          data: { ms: Math.round(_moveMs * 100) / 100, nx, ny, nearest },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
   },
 
   travel: (locationId: string) => {
@@ -828,9 +886,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (cave) {
       const caveId = parseInt(cave.id.split('_').pop() ?? '1') || 1;
       const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: 'The traveler descended into the darkness...', type: 'discovery' };
+      const activeDungeonContinent = getContinentAt(state.playerX, state.playerY) ?? 'auredia';
       set({
         phase: 'dungeon',
         activeCaveId: caveId,
+        activeDungeonContinent,
         activeCaveEntityId: cave.id,
         dungeonRun: { caveId, bossDefeated: false, depthTier: 1 + (caveId % 4) },
         chronicle: [...state.chronicle, entry],
@@ -1269,13 +1329,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (cooldownOk) {
         clears[run.caveId] = state.worldTime;
         const tier = run.depthTier;
-        inv = addToInventory(inv, 'crystal', 1);
-        inv = addToInventory(inv, 'iron_ore', Math.min(6, 2 + (tier % 4)));
+        inv = addToInventory(inv, 'gold_coin', Math.min(4, 1 + (tier % 4)));
+        if (tier >= 4) inv = addToInventory(inv, 'crystal', 1);
         if (tier > 3) inv = addToInventory(inv, 'void_sigil', 1);
         entries.push({
           tick: state.tick,
           season: state.season,
-          text: 'You surface from the depths with ore glinting in your pack.',
+          text: 'You surface from the cave — a few coins jingle from the expedition purse.',
           type: 'discovery',
         });
       } else {
@@ -1290,6 +1350,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       phase: 'playing',
       activeCaveId: null,
+      activeDungeonContinent: null,
       activeCaveEntityId: null,
       dungeonRun: null,
       inventory: inv,

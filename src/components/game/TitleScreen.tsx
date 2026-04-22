@@ -80,6 +80,8 @@ function drawWorldPreview(ctx: CanvasRenderingContext2D, w: number, h: number) {
 
 export default function TitleScreen() {
   const startGame = useGameStore(s => s.startGame);
+  const bootError = useGameStore(s => s.bootError);
+  const clearBootError = useGameStore(s => s.clearBootError);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -116,6 +118,23 @@ export default function TitleScreen() {
     <div className="relative min-h-screen flex flex-col items-center justify-center text-center overflow-hidden bg-ink">
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-50" />
       <div className="absolute inset-0 bg-gradient-to-b from-ink/40 via-transparent to-ink/90 pointer-events-none" />
+
+      {bootError ? (
+        <div
+          className="relative z-20 mx-auto max-w-lg px-6 py-3 text-left border border-rose-500/40 bg-rose-950/80 text-rose-100/95 text-sm font-body rounded-sm"
+          role="alert"
+        >
+          <p className="font-display text-xs tracking-widest text-rose-200/90 uppercase mb-1">Could not start the world</p>
+          <p className="font-mono text-[11px] text-rose-100/80 break-words">{bootError}</p>
+          <button
+            type="button"
+            onClick={() => clearBootError()}
+            className="mt-3 text-[11px] font-mono text-gold/90 underline underline-offset-2 hover:text-gold"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       <motion.div
         className="relative z-10 flex flex-col items-center gap-6 px-8"

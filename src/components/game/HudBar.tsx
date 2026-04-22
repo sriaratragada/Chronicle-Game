@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { SEASON_NAMES, SEASON_ICONS, REP_LABELS, LOCATIONS, ENVIRONMENT_ACTIONS } from '@/lib/gameData';
-import { TileType, TILE_NAMES, getTileAt, getContinentAt } from '@/lib/mapGenerator';
+import { TileType, TILE_NAMES, getTileAt, getContinentAt, type ContinentId } from '@/lib/mapGenerator';
 import { getHamlets, isHamletId } from '@/lib/hamlets';
 import { getWeatherIcon } from '@/lib/weatherSystem';
 import { getTimeString } from '@/lib/timeSystem';
@@ -22,7 +22,6 @@ export default function HudBar() {
   const tick = useGameStore(s => s.tick);
   const worldTime = useGameStore(s => s.worldTime);
   const dayNightPhase = useGameStore(s => s.dayNightPhase);
-  const weather = useGameStore(s => s.weather);
   const playerTitle = useGameStore(s => s.playerTitle);
   const nearestLocation = useGameStore(s => s.nearestLocation);
   const reputation = useGameStore(s => s.reputation);
@@ -39,21 +38,37 @@ export default function HudBar() {
   const mounted = useGameStore(s => s.mounted);
   const inventory = useGameStore(s => s.inventory);
 
-  const hamletNear = nearestLocation && isHamletId(nearestLocation) ? getHamlets().find(h => h.id === nearestLocation) : null;
-  const locData = nearestLocation ? LOCATIONS.find(l => l.id === nearestLocation) : null;
+  const continent = useGameStore(s => getContinentAt(s.playerX, s.playerY));
+  const weatherStateHere = useGameStore(s => {
+    const c = getContinentAt(s.playerX, s.playerY) as ContinentId | null;
+    return c ? s.weather[c]?.state ?? 'clear' : 'clear';
+  });
+
+  const hamletNear = useMemo(() => {
+    if (!nearestLocation || !isHamletId(nearestLocation)) return null;
+    return getHamlets().find(h => h.id === nearestLocation) ?? null;
+  }, [nearestLocation]);
+
+  const locData = useMemo(
+    () => (nearestLocation ? LOCATIONS.find(l => l.id === nearestLocation) : null),
+    [nearestLocation],
+  );
+
   const locationDisplay = hamletNear
     ? { name: hamletNear.displayName, icon: '🛖' }
     : locData
       ? { name: locData.name, icon: locData.icon }
       : null;
-  const continent = getContinentAt(playerX, playerY);
-  const continentWeather = continent ? weather[continent] : null;
+
   const weaponDmg = getWeaponDamage(inventory);
   const totalArmor = getTotalArmor(inventory);
   const mainhand = inventory.equipment['mainhand'];
   const weaponDef = mainhand ? ITEMS[mainhand.itemId] : null;
 
-  const currentTile: TileType = TILE_NAMES[getTileAt(playerX, playerY)] ?? 'grass';
+  const currentTile: TileType = useMemo(
+    () => (TILE_NAMES[getTileAt(playerX, playerY)] ?? 'grass') as TileType,
+    [playerX, playerY],
+  );
 
   const availableActions = ENVIRONMENT_ACTIONS.filter(a =>
     a.terrain === currentTile && (!environmentCooldowns[a.id] || tick >= environmentCooldowns[a.id])
@@ -65,8 +80,28 @@ export default function HudBar() {
     .slice(0, 3)
     .filter(([, v]) => v > 0);
 
+  const keybindStrip =
+    phase === 'battle' ? (
+      <span>
+        Strike <kbd className="text-gold/70">1</kbd>/<kbd className="text-gold/70">A</kbd> · Guard <kbd className="text-gold/70">2</kbd>/<kbd className="text-gold/70">G</kbd> ·
+        Flee <kbd className="text-gold/70">3</kbd>/<kbd className="text-gold/70">F</kbd> · <kbd className="text-gold/70">Esc</kbd> close panels
+      </span>
+    ) : (
+      <span>
+        Move <kbd className="text-gold/70">WASD</kbd> · Inv <kbd className="text-gold/70">I</kbd> · Craft <kbd className="text-gold/70">K</kbd> · Skills <kbd className="text-gold/70">L</kbd> ·
+        Quests <kbd className="text-gold/70">Q</kbd> · Faction <kbd className="text-gold/70">F</kbd> · Shop <kbd className="text-gold/70">M</kbd> · Build <kbd className="text-gold/70">B</kbd> ·
+        Travel <kbd className="text-gold/70">T</kbd> · Save <kbd className="text-gold/70">F5</kbd> · Hotbar <kbd className="text-gold/70">1–6</kbd> · Use <kbd className="text-gold/70">E</kbd> ·
+        Atk <kbd className="text-gold/70">J</kbd> · Help <kbd className="text-gold/70">H</kbd>/<kbd className="text-gold/70">?</kbd> · <kbd className="text-gold/70">Esc</kbd>
+      </span>
+    );
+
   return (
     <div className="absolute bottom-0 left-0 right-0 z-40 pointer-events-auto">
+      <div className="flex justify-center px-2 mb-1">
+        <div className="max-w-full overflow-x-auto overflow-y-hidden font-mono-game text-[8px] text-mist/55 tracking-tight whitespace-nowrap py-1 px-2 rounded border border-gold/10 bg-ink/90 backdrop-blur-sm">
+          {keybindStrip}
+        </div>
+      </div>
       {/* Environment actions row */}
       {availableActions.length > 0 && (
         <div className="flex justify-center gap-2 mb-1 px-4">
@@ -148,7 +183,7 @@ export default function HudBar() {
             {/* Time + day phase */}
             <span className="font-mono-game text-[10px] text-mist">{DAY_ICONS[dayNightPhase] ?? '☀️'} {getTimeString(worldTime)}</span>
             {/* Weather */}
-            {continentWeather && <span className="font-mono-game text-[10px] text-mist">{getWeatherIcon(continentWeather.state as any)}</span>}
+            {continent && <span className="font-mono-game text-[10px] text-mist">{getWeatherIcon(weatherStateHere as any)}</span>}
             {/* Season */}
             <div className="flex items-center gap-1.5 relative" onMouseEnter={() => setHoverSeason(true)} onMouseLeave={() => setHoverSeason(false)}>
               <span className="text-sm">{SEASON_ICONS[season]}</span>

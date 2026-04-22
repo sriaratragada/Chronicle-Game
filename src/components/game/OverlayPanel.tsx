@@ -4,6 +4,7 @@ import { REP_LABELS, FACTION_INFO, SEASON_NAMES, SEASON_ICONS, LOCATIONS } from 
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function OverlayPanel() {
+  const phase = useGameStore(s => s.phase);
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const reputation = useGameStore(s => s.reputation);
@@ -28,11 +29,14 @@ export default function OverlayPanel() {
       if (e.key === 'm' || e.key === 'M') setOverlay(overlay === 'shop' ? 'none' : 'shop');
       if (e.key === 'b' || e.key === 'B') setOverlay(overlay === 'build' ? 'none' : 'build');
       if (e.key === 't' || e.key === 'T') setOverlay(overlay === 'fasttravel' ? 'none' : 'fasttravel');
+      if ((e.key === 'g' || e.key === 'G') && (phase === 'playing' || phase === 'sailing')) {
+        setOverlay(overlay === 'map' ? 'none' : 'map');
+      }
       if (e.key === 'F5') { e.preventDefault(); setOverlay(overlay === 'saveload' ? 'none' : 'saveload'); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [overlay, setOverlay]);
+  }, [overlay, setOverlay, phase]);
 
   const typeColors: Record<string, string> = {
     action: 'text-gold', world: 'text-mist', npc: 'text-parchment',

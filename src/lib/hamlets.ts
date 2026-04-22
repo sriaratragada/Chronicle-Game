@@ -102,7 +102,8 @@ function buildHamlets(): HamletDef[] {
   const rs = ensureRoads();
   const sites: HamletDef[] = [];
   const minSpacing = 36;
-  const stride = 52;
+  /** Larger stride = fewer grid probes (boot cost); cap still limits hamlet count. */
+  const stride = 84;
 
   for (let gy = stride; gy < MAP_H - stride; gy += stride) {
     for (let gx = stride; gx < MAP_W - stride; gx += stride) {
@@ -138,13 +139,18 @@ function buildHamlets(): HamletDef[] {
         archetype: arch,
         continent,
       });
-      if (sites.length >= 200) return sites;
+      if (sites.length >= 140) return sites;
     }
   }
   return sites;
 }
 
 let _hamlets: HamletDef[] | null = null;
+
+/** Clears cached hamlet sites (call when world seed / roads change). */
+export function invalidateHamletCache(): void {
+  _hamlets = null;
+}
 
 export function getHamlets(): HamletDef[] {
   if (!_hamlets) _hamlets = buildHamlets();

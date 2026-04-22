@@ -7,6 +7,8 @@ import {
   getTileAt,
   tileCodeToType,
   getWorldSeed,
+  sampleBaseTerrainCode,
+  isWalkableCode,
 } from './mapGenerator';
 import { getCoastalPortMarkers } from './coastalPorts';
 import { getSettlementSidewalkPositions, getSettlementLayoutCenter } from './settlementLayout';
@@ -35,6 +37,42 @@ const spatialHash = new Map<number, WorldEntity[]>();
 const entityById = new Map<string, WorldEntity>();
 let nextId = 1;
 
+/** Per-kind lists so tick paths avoid scanning all entities (O(N) → O(k)). */
+const entitiesByKind = new Map<EntityKind, WorldEntity[]>();
+/** settlement_npc + hamlet_npc only, for schedule ticks without full scans. */
+const scheduleNpcBucket: WorldEntity[] = [];
+
+function bucketForKind(kind: EntityKind): WorldEntity[] {
+  let b = entitiesByKind.get(kind);
+  if (!b) {
+    b = [];
+    entitiesByKind.set(kind, b);
+  }
+  return b;
+}
+
+function removeFromKindBucket(entity: WorldEntity) {
+  const b = entitiesByKind.get(entity.kind);
+  if (!b) return;
+  const i = b.indexOf(entity);
+  if (i !== -1) b.splice(i, 1);
+}
+
+function registerEntityIndexes(entity: WorldEntity) {
+  bucketForKind(entity.kind).push(entity);
+  if (entity.kind === 'settlement_npc' || entity.kind === 'hamlet_npc') {
+    scheduleNpcBucket.push(entity);
+  }
+}
+
+function unregisterEntityIndexes(entity: WorldEntity) {
+  removeFromKindBucket(entity);
+  if (entity.kind === 'settlement_npc' || entity.kind === 'hamlet_npc') {
+    const i = scheduleNpcBucket.indexOf(entity);
+    if (i !== -1) scheduleNpcBucket.splice(i, 1);
+  }
+}
+
 function chunkKey(x: number, y: number): number {
   const cx = Math.floor(x / CHUNK_SIZE);
   const cy = Math.floor(y / CHUNK_SIZE);
@@ -48,12 +86,14 @@ export function spawnEntity(kind: EntityKind, x: number, y: number, data: Record
   const key = chunkKey(x, y);
   if (!spatialHash.has(key)) spatialHash.set(key, []);
   spatialHash.get(key)!.push(entity);
+  registerEntityIndexes(entity);
   return entity;
 }
 
 export function removeEntity(id: string) {
   const entity = entityById.get(id);
   if (!entity) return;
+  unregisterEntityIndexes(entity);
   entityById.delete(id);
   const key = chunkKey(entity.x, entity.y);
   const arr = spatialHash.get(key);
@@ -107,10 +147,17 @@ export function getEntityById(id: string): WorldEntity | undefined {
 export function clearAllEntities() {
   spatialHash.clear();
   entityById.clear();
+  entitiesByKind.clear();
+  scheduleNpcBucket.length = 0;
   nextId = 1;
 }
 
 const WILD_ANIMAL_KINDS: EntityKind[] = ['deer', 'sheep', 'rabbit', 'wolf', 'bear', 'bandit'];
+
+/** Open grazing ground — herbivores cluster and respawn more often here. */
+function isPlainTileType(tn: string): boolean {
+  return tn === 'grass' || tn === 'clearing' || tn === 'farm_field';
+}
 
 export function countWildlifeEntities(): number {
   let n = 0;
@@ -170,17 +217,17 @@ export function initWorldEntities() {
     spawnEntity(kind, x, y, {}, 1);
   }
 
-  // Dynamic animals (~40 total, biome-aware; static AmbientEntity wildlife removed from mapGenerator)
+  // Dynamic animals (base quota + plains herds, biome-aware; AmbientEntity wildlife removed from mapGenerator)
   type SpawnSpec = { kind: EntityKind; hp: number; pred: (t: string) => boolean };
   const specs: SpawnSpec[] = [
-    { kind: 'deer', hp: 20, pred: t => ['forest', 'dense_forest', 'clearing'].includes(t) },
+    { kind: 'deer', hp: 20, pred: t => ['forest', 'dense_forest', 'clearing', 'grass'].includes(t) },
     { kind: 'sheep', hp: 15, pred: t => ['grass', 'farm_field', 'clearing'].includes(t) },
-    { kind: 'rabbit', hp: 8, pred: t => ['grass', 'clearing', 'hill'].includes(t) },
+    { kind: 'rabbit', hp: 8, pred: t => ['grass', 'clearing', 'farm_field', 'hill'].includes(t) },
     { kind: 'wolf', hp: 40, pred: t => ['dense_forest', 'hill', 'forest'].includes(t) },
     { kind: 'bear', hp: 60, pred: t => ['forest', 'hill', 'dense_forest'].includes(t) },
     { kind: 'bandit', hp: 50, pred: t => ['road', 'hill', 'grass', 'ruins'].includes(t) },
   ];
-  const quota = [10, 8, 5, 8, 4, 5]; // sums to 40
+  const quota = [11, 10, 7, 8, 4, 5]; // grazers bumped on plains-friendly tiles; sum 45
   for (let si = 0; si < specs.length; si++) {
     const { kind, hp, pred } = specs[si]!;
     for (let j = 0; j < quota[si]!; j++) {
@@ -205,6 +252,62 @@ export function initWorldEntities() {
             placed = true;
           }
         }
+      }
+    }
+  }
+
+  // Plains herds — extra sheep/rabbit/deer grouped on grass, clearing, and farm strips
+  for (let herd = 0; herd < 8; herd++) {
+    let cx = 0;
+    let cy = 0;
+    let found = false;
+    for (let a = 0; a < 120 && !found; a++) {
+      cx = Math.floor(hash(herd * 997 + a, 6001) * MAP_W);
+      cy = Math.floor(hash(herd * 769 + a, 6002) * MAP_H);
+      const tn = tileCodeToType(getTileAt(cx, cy));
+      if (!isPlainTileType(tn)) continue;
+      if (tn === 'deep_water' || tn === 'water') continue;
+      found = true;
+    }
+    if (!found) continue;
+
+    const pattern = hash(herd, 7001);
+    const members: { kind: EntityKind; hp: number }[] =
+      pattern < 0.48
+        ? [
+            { kind: 'sheep', hp: 15 },
+            { kind: 'sheep', hp: 15 },
+            { kind: 'sheep', hp: 15 },
+            { kind: 'sheep', hp: 15 },
+          ]
+        : pattern < 0.78
+          ? [
+              { kind: 'rabbit', hp: 8 },
+              { kind: 'rabbit', hp: 8 },
+              { kind: 'rabbit', hp: 8 },
+              { kind: 'rabbit', hp: 8 },
+            ]
+          : [
+              { kind: 'deer', hp: 20 },
+              { kind: 'deer', hp: 20 },
+              { kind: 'sheep', hp: 15 },
+              { kind: 'rabbit', hp: 8 },
+            ];
+
+    for (let mi = 0; mi < members.length; mi++) {
+      const { kind, hp } = members[mi]!;
+      let placed = false;
+      for (let attempt = 0; attempt < 48 && !placed; attempt++) {
+        const ang = hash(herd * 31 + mi, attempt + 404) * Math.PI * 2;
+        const rad = 2 + hash(herd * 37 + mi, attempt + 505) * 12;
+        const px = Math.round(cx + Math.cos(ang) * rad);
+        const py = Math.round(cy + Math.sin(ang) * rad);
+        if (px < 0 || px >= MAP_W || py < 0 || py >= MAP_H) continue;
+        const tn = tileCodeToType(getTileAt(px, py));
+        if (tn === 'deep_water' || tn === 'water' || tn === 'mountain' || tn === 'snow') continue;
+        if (!isPlainTileType(tn) && hash(herd + mi, attempt + 909) > 0.42) continue;
+        spawnEntity(kind, px, py, { behavior: 'grazing', herd: herd }, hp);
+        placed = true;
       }
     }
   }
@@ -316,60 +419,78 @@ export function initWorldEntities() {
   }
 }
 
-/** Respawn 1–2 wild animals far from the player when population is low (deterministic). */
+const NPC_SCHEDULE_BUDGET = 36;
+let npcScheduleCursor = 0;
+
+function tickOneSettlementOrHamletNpc(
+  e: WorldEntity,
+  dayPhase: import('./gameTypes').DayNightPhase,
+  worldTime: number,
+  h: (a: number, b: number) => number,
+): void {
+  const homeX = (e.data.homeX as number) ?? e.x;
+  const homeY = (e.data.homeY as number) ?? e.y;
+  const locId = e.data.locationId as string | undefined;
+  const hamletId = e.data.hamletId as string | undefined;
+  let tx = homeX;
+  let ty = homeY;
+  if (e.kind === 'settlement_npc' && locId) {
+    const hub = getSettlementLayoutCenter(locId);
+    if (dayPhase === 'day' || dayPhase === 'dawn') {
+      const job = String(e.data.job ?? '');
+      const spread = job === 'merchant' || job === 'guard' ? 14 : 10;
+      tx = hub.x + Math.round((h(worldTime, e.x) - 0.5) * spread * 2);
+      ty = hub.y + Math.round((h(worldTime, e.y + 3) - 0.5) * spread * 2);
+    } else {
+      tx = homeX + Math.round((h(e.x, worldTime) - 0.5) * 3);
+      ty = homeY + Math.round((h(e.y, worldTime + 1) - 0.5) * 3);
+    }
+  } else if (e.kind === 'hamlet_npc' && hamletId) {
+    const hx = (e.data.hamletX as number) ?? homeX;
+    const hy = (e.data.hamletY as number) ?? homeY;
+    if (dayPhase === 'day' || dayPhase === 'dawn') {
+      tx = hx + 3 + Math.round((h(worldTime, e.x) - 0.5) * 4);
+      ty = hy + Math.round((h(worldTime, e.y) - 0.5) * 4);
+    } else {
+      tx = homeX;
+      ty = homeY;
+    }
+  }
+  if (Math.abs(tx - e.x) + Math.abs(ty - e.y) > 48) return;
+  const dx = Math.sign(tx - e.x);
+  const dy = Math.sign(ty - e.y);
+  if (dx === 0 && dy === 0) return;
+  const nx = e.x + dx;
+  const ny = e.y + dy;
+  const tn = tileCodeToType(getTileAt(nx, ny));
+  if (tn === 'deep_water' || tn === 'water' || tn === 'mountain') return;
+  moveEntity(e.id, nx, ny);
+}
+
+/** Settlement / hamlet NPCs: round-robin a fixed budget per tick to avoid getTileAt storms. */
 export function tickWorldNpcSchedules(dayPhase: import('./gameTypes').DayNightPhase, worldTime: number): void {
   const h = (a: number, b: number) => {
     let x = (a * 374761393 + b * 668265263 + worldTime) & 0xffffffff;
     x = ((x ^ (x >> 13)) * 1274126177) & 0xffffffff;
     return (x & 0x7fffffff) / 0x7fffffff;
   };
-  entityById.forEach(e => {
-    if (e.kind !== 'settlement_npc' && e.kind !== 'hamlet_npc') return;
-    const homeX = (e.data.homeX as number) ?? e.x;
-    const homeY = (e.data.homeY as number) ?? e.y;
-    const locId = e.data.locationId as string | undefined;
-    const hamletId = e.data.hamletId as string | undefined;
-    let tx = homeX;
-    let ty = homeY;
-    if (e.kind === 'settlement_npc' && locId) {
-      const hub = getSettlementLayoutCenter(locId);
-      if (dayPhase === 'day' || dayPhase === 'dawn') {
-        const job = String(e.data.job ?? '');
-        const spread = job === 'merchant' || job === 'guard' ? 14 : 10;
-        tx = hub.x + Math.round((h(worldTime, e.x) - 0.5) * spread * 2);
-        ty = hub.y + Math.round((h(worldTime, e.y + 3) - 0.5) * spread * 2);
-      } else {
-        tx = homeX + Math.round((h(e.x, worldTime) - 0.5) * 3);
-        ty = homeY + Math.round((h(e.y, worldTime + 1) - 0.5) * 3);
-      }
-    } else if (e.kind === 'hamlet_npc' && hamletId) {
-      const hx = (e.data.hamletX as number) ?? homeX;
-      const hy = (e.data.hamletY as number) ?? homeY;
-      if (dayPhase === 'day' || dayPhase === 'dawn') {
-        tx = hx + 3 + Math.round((h(worldTime, e.x) - 0.5) * 4);
-        ty = hy + Math.round((h(worldTime, e.y) - 0.5) * 4);
-      } else {
-        tx = homeX;
-        ty = homeY;
-      }
-    }
-    if (Math.abs(tx - e.x) + Math.abs(ty - e.y) > 48) return;
-    const dx = Math.sign(tx - e.x);
-    const dy = Math.sign(ty - e.y);
-    if (dx === 0 && dy === 0) return;
-    const nx = e.x + dx;
-    const ny = e.y + dy;
-    const tn = tileCodeToType(getTileAt(nx, ny));
-    if (tn === 'deep_water' || tn === 'water' || tn === 'mountain') return;
-    moveEntity(e.id, nx, ny);
-  });
+  const n = scheduleNpcBucket.length;
+  if (n === 0) return;
+  const budget = Math.min(NPC_SCHEDULE_BUDGET, n);
+  const start = npcScheduleCursor % n;
+  for (let i = 0; i < budget; i++) {
+    tickOneSettlementOrHamletNpc(scheduleNpcBucket[(start + i) % n]!, dayPhase, worldTime, h);
+  }
+  npcScheduleCursor = (start + budget) % n;
 }
 
 export function tickCaravanMovement(): void {
-  entityById.forEach(e => {
-    if (e.kind !== 'caravan') return;
+  const caravans = entitiesByKind.get('caravan');
+  if (!caravans?.length) return;
+  for (let ci = 0; ci < caravans.length; ci++) {
+    const e = caravans[ci]!;
     const wp = e.data.waypoints as { x: number; y: number }[] | undefined;
-    if (!wp || wp.length < 2) return;
+    if (!wp || wp.length < 2) continue;
     let li = (e.data.legIndex as number) ?? 1;
     let dir = (e.data.dir as number) ?? 1;
     if (li < 0) {
@@ -381,7 +502,7 @@ export function tickCaravanMovement(): void {
       dir = -1;
     }
     const target = wp[li];
-    if (!target) return;
+    if (!target) continue;
     if (e.x === target.x && e.y === target.y) {
       li += dir;
       if (li >= wp.length) {
@@ -397,47 +518,53 @@ export function tickCaravanMovement(): void {
       }
       e.data.legIndex = li;
       e.data.dir = dir;
-      return;
+      continue;
     }
     const dx = Math.sign(target.x - e.x);
     const dy = Math.sign(target.y - e.y);
     moveEntity(e.id, e.x + dx, e.y + dy);
-  });
+  }
 }
 
 export function getEntitiesByKind(kind: EntityKind): WorldEntity[] {
-  const out: WorldEntity[] = [];
-  entityById.forEach(ent => {
-    if (ent.kind === kind) out.push(ent);
-  });
-  return out;
+  const b = entitiesByKind.get(kind);
+  return b ? [...b] : [];
 }
 
+const RESPAWN_RING_MIN = 96;
+const RESPAWN_RING_MAX = 240;
+const RESPAWN_ATTEMPTS = 28;
+
 export function respawnWildlifeFarFrom(px: number, py: number, worldTime: number) {
-  if (countWildlifeEntities() >= 38) return;
+  if (countWildlifeEntities() >= 48) return;
   const hash = (a: number, b: number) => {
     let h = (a * 374761393 + b * 668265263 + worldTime) & 0xffffffff;
     h = ((h ^ (h >> 13)) * 1274126177) & 0xffffffff;
     return (h & 0x7fffffff) / 0x7fffffff;
   };
   const rollKind = (r: number): EntityKind => {
-    if (r < 0.28) return 'deer';
-    if (r < 0.48) return 'sheep';
-    if (r < 0.58) return 'rabbit';
-    if (r < 0.78) return 'wolf';
-    if (r < 0.92) return 'bear';
+    if (r < 0.30) return 'deer';
+    if (r < 0.52) return 'sheep';
+    if (r < 0.62) return 'rabbit';
+    if (r < 0.80) return 'wolf';
+    if (r < 0.93) return 'bear';
     return 'bandit';
   };
   const toSpawn = 1 + (hash(worldTime, 77) > 0.55 ? 1 : 0);
   for (let s = 0; s < toSpawn; s++) {
-    for (let a = 0; a < 120; a++) {
-      const x = Math.floor(hash(worldTime + s * 31, a * 59 + 1000) * MAP_W);
-      const y = Math.floor(hash(worldTime + s * 47, a * 61 + 2000) * MAP_H);
-      const d = Math.sqrt((x - px) ** 2 + (y - py) ** 2);
-      if (d < 90) continue;
+    const kind = rollKind(hash(worldTime + s * 13, py + 404));
+    const herbivore = kind === 'deer' || kind === 'sheep' || kind === 'rabbit';
+    const maxAttempts = RESPAWN_ATTEMPTS * (herbivore ? 2 : 1);
+    for (let a = 0; a < maxAttempts; a++) {
+      const ang = hash(worldTime + s * 31, a * 59 + 1000) * Math.PI * 2;
+      const rad = RESPAWN_RING_MIN + hash(worldTime + s * 47, a * 61 + 2000) * (RESPAWN_RING_MAX - RESPAWN_RING_MIN);
+      const x = Math.floor(px + Math.cos(ang) * rad);
+      const y = Math.floor(py + Math.sin(ang) * rad);
+      if (x < 0 || x >= MAP_W || y < 0 || y >= MAP_H) continue;
+      if (!isWalkableCode(sampleBaseTerrainCode(x, y))) continue;
       const tn = tileCodeToType(getTileAt(x, y));
       if (tn === 'deep_water' || tn === 'water' || tn === 'mountain') continue;
-      const kind = rollKind(hash(x, y + s));
+      if (herbivore && !isPlainTileType(tn) && a < maxAttempts - 6 && hash(x + a, y + worldTime) < 0.52) continue;
       const hp = kind === 'deer' ? 20 : kind === 'sheep' ? 15 : kind === 'rabbit' ? 8 : kind === 'wolf' ? 40 : kind === 'bear' ? 60 : 50;
       spawnEntity(kind, x, y, { behavior: 'grazing' }, hp);
       break;
@@ -460,6 +587,7 @@ export function deserializeEntities(json: string) {
     const key = chunkKey(entity.x, entity.y);
     if (!spatialHash.has(key)) spatialHash.set(key, []);
     spatialHash.get(key)!.push(entity);
+    registerEntityIndexes(entity);
     const num = parseInt(entity.id.split('_')[1]);
     if (num >= nextId) nextId = num + 1;
   }

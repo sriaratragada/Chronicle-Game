@@ -79,6 +79,7 @@ export const ITEMS: Record<string, ItemDef> = {
   traveler_charm: { id: 'traveler_charm', name: 'Traveler\'s Charm', icon: '🧿', type: 'armor', rarity: 'uncommon', stackable: false, maxStack: 1, description: 'Reduces hunger decay slightly.', equipSlot: 'amulet', armor: 0, value: 35 },
 
   tent_kit: { id: 'tent_kit', name: 'Travel Tent', icon: '⛺', type: 'tool', rarity: 'common', stackable: true, maxStack: 3, description: 'Pitch a camp and open a stash. Use from hotbar on open ground.', value: 12 },
+  realm_map: { id: 'realm_map', name: 'Realm Atlas', icon: '🗺️', type: 'misc', rarity: 'common', stackable: false, maxStack: 1, description: 'A chart of the known world. Use from the hotbar (E) to study roads, settlements, and caves.', value: 8 },
   portable_stove: { id: 'portable_stove', name: 'Portable Stove', icon: '🫕', type: 'tool', rarity: 'uncommon', stackable: false, maxStack: 1, description: 'Cook anywhere without a campfire.', value: 45 },
   void_sigil: { id: 'void_sigil', name: 'Void Sigil', icon: '🜁', type: 'misc', rarity: 'rare', stackable: true, maxStack: 5, description: 'A proof-token from the deep places. Factions pay well for these.', value: 80 },
 };

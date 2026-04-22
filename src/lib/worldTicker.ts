@@ -19,10 +19,29 @@ import { enemyAttackDamage, getAggroRadius } from './combatSystem';
 import { getTotalArmor } from './craftingSystem';
 import { MAP_W, MAP_H } from './mapGenerator';
 import { tickRegionalModifiers } from './regionalState';
-import type { ChronicleEntry } from './gameTypes';
+import type { ChronicleEntry, GameState, DayNightPhase, Season } from './gameTypes';
+
+const CHRONICLE_CAP = 400;
 
 const DEFAULT_TICK_MS = 1500;
 let tickInterval: ReturnType<typeof setInterval> | null = null;
+
+// #region agent log
+function dbgWorld(hypothesisId: string, location: string, message: string, data: Record<string, unknown>): void {
+  fetch('http://127.0.0.1:7891/ingest/68e880b8-e871-43be-946d-757508d96764', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a7e92f' },
+    body: JSON.stringify({
+      sessionId: 'a7e92f',
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
 
 function computeFactionStress(factions: Record<string, { treasury: number; atWarWith: string[] }>): number {
   let s = 0;
@@ -33,11 +52,42 @@ function computeFactionStress(factions: Record<string, { treasury: number; atWar
   return Math.min(1, s);
 }
 
-function onTick() {
-  const state = useGameStore.getState();
-  if (state.currentEvent || state.lastResult || state.phase === 'dead' || state.phase === 'title' || state.phase === 'booting' || state.phase === 'dungeon' || state.phase === 'battle') return;
-  if (state.overlay !== 'none') return;
+function worldTickBlocked(state: GameState): boolean {
+  return (
+    !!state.currentEvent ||
+    !!state.lastResult ||
+    state.phase === 'dead' ||
+    state.phase === 'title' ||
+    state.phase === 'booting' ||
+    state.phase === 'dungeon' ||
+    state.phase === 'battle' ||
+    state.overlay !== 'none'
+  );
+}
 
+interface WorldTickScratch {
+  state: GameState;
+  newWorldTime: number;
+  newDayNight: DayNightPhase;
+  newSeason: Season;
+  newWeather: GameState['weather'];
+  newHunger: number;
+  newHealth: number;
+  newPhase: GameState['phase'];
+  newRegional: GameState['regionalModifiers'];
+  extraChronicle: ChronicleEntry[];
+  newMarkets: GameState['markets'];
+  newFactionStates: GameState['factionStates'];
+  newBountyBoards: GameState['bountyBoards'];
+  newQuests: GameState['quests'];
+  escortId: string | null;
+  newGold: number;
+}
+
+function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
+  // #region agent log
+  const _tPhaseA0 = performance.now();
+  // #endregion
   const newWorldTime = state.worldTime + 1;
   const newDayNight = getDayNightPhase(newWorldTime);
 
@@ -90,93 +140,7 @@ function onTick() {
     }
   }
 
-  if (newWorldTime % 2 === 0) {
-    tickCaravanMovement();
-  }
-  tickWorldNpcSchedules(newDayNight, newWorldTime);
-
-  for (const e of getEntitiesByKind('cooking_fire')) {
-    if (Number(e.data.expiresAt ?? 0) < newWorldTime) {
-      if (state.activeCampFireId === e.id) {
-        useGameStore.setState({ activeCampFireId: null });
-      }
-      removeEntity(e.id);
-    }
-  }
-
-  let newGold = state.gold;
-  const caravans = getEntitiesByKind('caravan');
-  if (caravans.some(c => c.data.pendingDelivery)) {
-    if (newMarkets === state.markets) newMarkets = { ...state.markets };
-  }
-  for (const c of caravans) {
-    const p = c.data.pendingDelivery as { locationId: string; cargo: string } | undefined;
-    if (!p?.locationId || !newMarkets[p.locationId]) continue;
-    newMarkets[p.locationId] = applyCaravanDelivery(newMarkets[p.locationId]!, p.cargo);
-    delete c.data.pendingDelivery;
-    const dist = Math.hypot(c.x - state.playerX, c.y - state.playerY);
-    if (state.escortCaravanId === c.id && dist < 14 && !c.data.escortPaid) {
-      c.data.escortPaid = true;
-      newGold += 35 + Math.floor(Math.random() * 40);
-      extraChronicle.push({
-        tick: state.tick,
-        season: state.season,
-        text: 'The caravan master pays escort coin as wagons roll into the yard.',
-        type: 'world',
-      });
-    }
-  }
-
-  const aggroEnemies = getEntitiesNear(state.playerX, state.playerY, 15);
-  for (const enemy of aggroEnemies) {
-    if (!['wolf', 'bandit', 'warband', 'bear'].includes(enemy.kind)) continue;
-    const dist = Math.sqrt((enemy.x - state.playerX) ** 2 + (enemy.y - state.playerY) ** 2);
-    const aggroR = getAggroRadius(enemy);
-    if (dist > aggroR) continue;
-
-    const dx = Math.sign(state.playerX - enemy.x);
-    const dy = Math.sign(state.playerY - enemy.y);
-    moveEntity(enemy.id, enemy.x + dx, enemy.y + dy);
-
-    if (dist < 2) {
-      const armor = getTotalArmor(state.inventory);
-      const dmg = enemyAttackDamage(enemy, armor);
-      newHealth = Math.max(0, newHealth - dmg);
-      if (newHealth <= 0) newPhase = 'dead';
-    }
-  }
-
-  const nearbyAnimals = getEntitiesNear(state.playerX, state.playerY, 20);
-  for (const animal of nearbyAnimals) {
-    if (!['deer', 'sheep', 'rabbit'].includes(animal.kind)) continue;
-    const dist = Math.sqrt((animal.x - state.playerX) ** 2 + (animal.y - state.playerY) ** 2);
-    if (dist < 8) {
-      const dx = Math.sign(animal.x - state.playerX);
-      const dy = Math.sign(animal.y - state.playerY);
-      moveEntity(animal.id, animal.x + dx, animal.y + dy);
-    }
-  }
-
-  if (newWorldTime % 100 === 0 && state.phase === 'playing') {
-    respawnWildlifeFarFrom(state.playerX, state.playerY, newWorldTime);
-  }
-
-  if (newWorldTime % 20 === 0) {
-    const hashR = (a: number, b: number) => {
-      let h = (a * 374761393 + b * 668265263 + newWorldTime) & 0xffffffff;
-      return ((h ^ (h >> 16)) & 0x7fffffff) / 0x7fffffff;
-    };
-    for (let i = 0; i < 5; i++) {
-      const rx = state.playerX + Math.floor((hashR(i * 31, newWorldTime) - 0.5) * 200);
-      const ry = state.playerY + Math.floor((hashR(i * 47, newWorldTime + 100) - 0.5) * 200);
-      if (rx < 0 || rx >= MAP_W || ry < 0 || ry >= MAP_H) continue;
-      const roll = hashR(rx, ry);
-      const kind = roll < 0.3 ? ('resource_tree' as const) : roll < 0.5 ? ('resource_rock' as const) : roll < 0.7 ? ('resource_herb' as const) : ('resource_berry' as const);
-      spawnEntity(kind, rx, ry, {}, 1);
-    }
-  }
-
-  const newQuests = state.quests.map(q => {
+  const newQuestsMapped = state.quests.map(q => {
     if (q.state !== 'active') return q;
     let changed = false;
     const steps = q.steps.map(s => {
@@ -191,27 +155,244 @@ function onTick() {
     const allDone = steps.every(s => s.completed);
     return { ...q, steps, state: allDone ? ('completed' as const) : q.state };
   });
+  let newQuests = state.quests;
+  for (let i = 0; i < newQuestsMapped.length; i++) {
+    if (newQuestsMapped[i] !== state.quests[i]) {
+      newQuests = newQuestsMapped;
+      break;
+    }
+  }
 
   let escortId = state.escortCaravanId;
   if (escortId && !getEntityById(escortId)) escortId = null;
 
-  useGameStore.setState({
+  // #region agent log
+  dbgWorld('A', 'worldTicker.ts:phaseA', 'computeWorldTickPhaseA_ms', {
+    ms: Math.round((performance.now() - _tPhaseA0) * 100) / 100,
+    wt: newWorldTime,
+    m10: newWorldTime % 10 === 0,
+    m12: newWorldTime % 12 === 0,
+    m50: newWorldTime % 50 === 0,
+    mDay: newWorldTime % TICKS_PER_DAY === 0,
+  });
+  // #endregion
+
+  return {
+    state,
+    newWorldTime,
+    newDayNight,
+    newSeason,
+    newWeather: newWeather as GameState['weather'],
+    newHunger,
+    newHealth,
+    newPhase,
+    newRegional,
+    extraChronicle,
+    newMarkets,
+    newFactionStates,
+    newBountyBoards,
+    newQuests,
+    escortId,
+    newGold: state.gold,
+  };
+}
+
+function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void {
+  // #region agent log
+  const _tB0 = performance.now();
+  // #endregion
+  const { state, newWorldTime, newDayNight } = scratch;
+  let newHealth = scratch.newHealth;
+  let newPhase = scratch.newPhase;
+  let newMarkets = scratch.newMarkets;
+  let newGold = scratch.newGold;
+  const { extraChronicle } = scratch;
+
+  if (newWorldTime % 2 === 0) {
+    tickCaravanMovement();
+  }
+  tickWorldNpcSchedules(newDayNight, newWorldTime);
+
+  for (const e of getEntitiesByKind('cooking_fire')) {
+    if (Number(e.data.expiresAt ?? 0) < newWorldTime) {
+      if (latest.activeCampFireId === e.id) {
+        useGameStore.setState({ activeCampFireId: null });
+      }
+      removeEntity(e.id);
+    }
+  }
+
+  const caravans = getEntitiesByKind('caravan');
+  if (caravans.some(c => c.data.pendingDelivery)) {
+    if (newMarkets === state.markets) newMarkets = { ...state.markets };
+  }
+  for (const c of caravans) {
+    const p = c.data.pendingDelivery as { locationId: string; cargo: string } | undefined;
+    if (!p?.locationId || !newMarkets[p.locationId]) continue;
+    newMarkets[p.locationId] = applyCaravanDelivery(newMarkets[p.locationId]!, p.cargo);
+    delete c.data.pendingDelivery;
+    const dist = Math.hypot(c.x - latest.playerX, c.y - latest.playerY);
+    if (latest.escortCaravanId === c.id && dist < 14 && !c.data.escortPaid) {
+      c.data.escortPaid = true;
+      newGold += 35 + Math.floor(Math.random() * 40);
+      extraChronicle.push({
+        tick: state.tick,
+        season: state.season,
+        text: 'The caravan master pays escort coin as wagons roll into the yard.',
+        type: 'world',
+      });
+    }
+  }
+
+  const px = latest.playerX;
+  const py = latest.playerY;
+  const aggroEnemies = getEntitiesNear(px, py, 15);
+  for (const enemy of aggroEnemies) {
+    if (!['wolf', 'bandit', 'warband', 'bear'].includes(enemy.kind)) continue;
+    const dist = Math.sqrt((enemy.x - px) ** 2 + (enemy.y - py) ** 2);
+    const aggroR = getAggroRadius(enemy);
+    if (dist > aggroR) continue;
+
+    const dx = Math.sign(px - enemy.x);
+    const dy = Math.sign(py - enemy.y);
+    moveEntity(enemy.id, enemy.x + dx, enemy.y + dy);
+
+    if (dist < 2) {
+      const armor = getTotalArmor(latest.inventory);
+      const dmg = enemyAttackDamage(enemy, armor);
+      newHealth = Math.max(0, newHealth - dmg);
+      if (newHealth <= 0) newPhase = 'dead';
+    }
+  }
+
+  const nearbyAnimals = getEntitiesNear(px, py, 20);
+  for (const animal of nearbyAnimals) {
+    if (!['deer', 'sheep', 'rabbit'].includes(animal.kind)) continue;
+    const dist = Math.sqrt((animal.x - px) ** 2 + (animal.y - py) ** 2);
+    if (dist < 8) {
+      const dx = Math.sign(animal.x - px);
+      const dy = Math.sign(animal.y - py);
+      moveEntity(animal.id, animal.x + dx, animal.y + dy);
+    }
+  }
+
+  if (newWorldTime % 20 === 0) {
+    const hashR = (a: number, b: number) => {
+      let h = (a * 374761393 + b * 668265263 + newWorldTime) & 0xffffffff;
+      return ((h ^ (h >> 16)) & 0x7fffffff) / 0x7fffffff;
+    };
+    for (let i = 0; i < 5; i++) {
+      const rx = px + Math.floor((hashR(i * 31, newWorldTime) - 0.5) * 200);
+      const ry = py + Math.floor((hashR(i * 47, newWorldTime + 100) - 0.5) * 200);
+      if (rx < 0 || rx >= MAP_W || ry < 0 || ry >= MAP_H) continue;
+      const roll = hashR(rx, ry);
+      const kind = roll < 0.3 ? ('resource_tree' as const) : roll < 0.5 ? ('resource_rock' as const) : roll < 0.7 ? ('resource_herb' as const) : ('resource_berry' as const);
+      spawnEntity(kind, rx, ry, {}, 1);
+    }
+  }
+
+  scratch.newHealth = newHealth;
+  scratch.newPhase = newPhase;
+  scratch.newMarkets = newMarkets;
+  scratch.newGold = newGold;
+  // #region agent log
+  dbgWorld('A', 'worldTicker.ts:phaseB', 'runWorldTickPhaseB_ms', {
+    ms: Math.round((performance.now() - _tB0) * 100) / 100,
+    wt: scratch.newWorldTime,
+  });
+  // #endregion
+}
+
+function applyWorldTickPatch(scratch: WorldTickScratch): void {
+  const { state, newWorldTime, newDayNight, newSeason, newWeather, newHunger, newHealth, newPhase, newRegional, extraChronicle, newMarkets, newFactionStates, newBountyBoards, newQuests, escortId, newGold } = scratch;
+
+  let nextChronicle = state.chronicle;
+  if (extraChronicle.length > 0) {
+    const merged = [...state.chronicle, ...extraChronicle];
+    nextChronicle = merged.length > CHRONICLE_CAP ? merged.slice(-CHRONICLE_CAP) : merged;
+  }
+
+  const patch: Partial<GameState> = {
     worldTime: newWorldTime,
     dayNightPhase: newDayNight,
-    weather: newWeather,
     season: newSeason,
     hunger: newHunger,
     health: newHealth,
     phase: newPhase,
-    markets: newMarkets,
-    factionStates: newFactionStates,
-    bountyBoards: newBountyBoards,
-    quests: newQuests,
     regionalModifiers: newRegional,
     gold: newGold,
     escortCaravanId: escortId,
-    chronicle: extraChronicle.length ? [...state.chronicle, ...extraChronicle] : state.chronicle,
+  };
+  if (newWeather !== state.weather) patch.weather = newWeather;
+  if (newMarkets !== state.markets) patch.markets = newMarkets;
+  if (newFactionStates !== state.factionStates) patch.factionStates = newFactionStates;
+  if (newBountyBoards !== state.bountyBoards) patch.bountyBoards = newBountyBoards;
+  if (newQuests !== state.quests) patch.quests = newQuests;
+  if (nextChronicle !== state.chronicle) patch.chronicle = nextChronicle;
+
+  // #region agent log
+  const _tS0 = performance.now();
+  // #endregion
+  useGameStore.setState(patch);
+  // #region agent log
+  dbgWorld('C', 'worldTicker.ts:setState', 'useGameStore_setState_ms', {
+    ms: Math.round((performance.now() - _tS0) * 100) / 100,
+    wt: newWorldTime,
+    keys: Object.keys(patch).length,
   });
+  // #endregion
+}
+
+function runWorldTickPipeline(): void {
+  // #region agent log
+  const _tPipe0 = performance.now();
+  dbgWorld('D', 'worldTicker.ts:pipeline', 'runWorldTickPipeline_start', {});
+  // #endregion
+  const state = useGameStore.getState();
+  if (worldTickBlocked(state)) return;
+
+  // Yield one frame before phase A so heavy economy/weather/quest work does not
+  // share the same rAF callback as the interval → rAF handoff (reduces hitches).
+  requestAnimationFrame(() => {
+    const s = useGameStore.getState();
+    if (worldTickBlocked(s)) return;
+
+    const scratch = computeWorldTickPhaseA(s);
+
+    requestAnimationFrame(() => {
+      const latest = useGameStore.getState();
+      if (worldTickBlocked(latest)) {
+        applyWorldTickPatch(scratch);
+        return;
+      }
+      runWorldTickPhaseB(scratch, latest);
+      applyWorldTickPatch(scratch);
+      // #region agent log
+      dbgWorld('D', 'worldTicker.ts:pipeline', 'runWorldTickPipeline_inner_done_ms', {
+        msSincePipeStart: Math.round((performance.now() - _tPipe0) * 100) / 100,
+        wt: scratch.newWorldTime,
+      });
+      // #endregion
+
+      if (scratch.newWorldTime % 100 === 0 && scratch.state.phase === 'playing') {
+        const px = latest.playerX;
+        const py = latest.playerY;
+        const wt = scratch.newWorldTime;
+        requestAnimationFrame(() => {
+          const st = useGameStore.getState();
+          if (st.phase !== 'playing' || st.overlay !== 'none' || st.currentEvent || st.lastResult) return;
+          respawnWildlifeFarFrom(px, py, wt);
+        });
+      }
+    });
+  });
+}
+
+function onTick(): void {
+  // #region agent log
+  dbgWorld('D', 'worldTicker.ts:onTick', 'setInterval_onTick_fire', { t: Date.now() });
+  // #endregion
+  requestAnimationFrame(runWorldTickPipeline);
 }
 
 export function startTicker(rate = DEFAULT_TICK_MS) {

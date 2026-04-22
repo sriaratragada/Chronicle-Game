@@ -1,229 +1,236 @@
-# HTML Explorer Game
+# Chronicle of Aethermoor — agent context dictionary
 
-A browser-based top-down 2D open-world RPG prototype — built entirely in the browser with React, TypeScript, and HTML5 Canvas. The world breathes before the player takes their first step.
-
-**Live:** [html-explorer-game.vercel.app](https://html-explorer-game.vercel.app)
+Single reference for **what exists**, **how it fits together**, **performance contracts**, and **where to extend**. No API keys or secrets here.
 
 ---
 
-## Design Vision
+## Project identity (plain terms)
 
-The world is already alive before the player takes their first step. Caravans move between cities, harvests succeed or fail, wars break out, merchants grow rich or go bankrupt — all without waiting for the player to trigger anything. The player is dropped into this living simulation and must find their place in it: building a reputation, mastering trade routes, forging alliances, or carving out infamy. Progress is measured not just in levels but in how well-known the player becomes across the world.
-
-**Core pillars:**
-
-- Simulation first — the world ticks forward independently; the player's actions are consequential ripples in an already-moving system
-- Trade and economy as a first-class mechanic — buying low, selling high, controlling supply chains, or disrupting rivals
-- Reputation as currency — every faction, city, and NPC remembers what the player has done; fame (or notoriety) opens and closes doors
+- **What:** Browser-based top-down open-world RPG prototype: explore a huge tile map, settlements, hamlets, trade roads, combat, inventory, quests, chronicle, fog of war, optional AI dialogue (Gemini).
+- **What it is not:** Not a multiplayer server game; not a 3D engine; not a full MMO backend. Saves are **localStorage** + JSON entity blob.
 
 ---
 
-## What's Been Built
-
-### Tech Stack
+## Stack glossary (coding terms)
 
 | Layer | Technology |
-|---|---|
-| Framework | React 18 + TypeScript |
-| Build | Vite 5 with SWC |
-| State management | Zustand |
-| Styling | Tailwind CSS + shadcn/ui (Radix primitives) |
-| Animation | Framer Motion |
-| Rendering | HTML5 Canvas (chunk-baked, pannable, zoomable) |
-| Testing | Vitest + Testing Library |
-
-### Procedural World Generation
-
-The overworld is a **10,000×10,000** tile space across three continents (**Auredia**, **Trivalen**, **Uloren**). Terrain is built **lazily per 64×64 chunk** using layered noise (grassland, forest, dense forest, desert, snow, mountain, water, sand, swamp, ruins, roads, rivers, farm fields). Roads connect named settlements; **procedural hamlets** along roads add smaller sites with NPCs. Chunks are cached in `mapGenerator`; the canvas draws only visible area.
-
-### Named Settlements and Hamlets
-
-Many **authored locations** use tiered radii (large capitals and cities, smaller villages and forts) with scaled layout density. **Hamlets** are deterministic road camps with varied archetypes. Discovery uses proximity radii per tier; narrative events use **stable IDs** and `completedEvents` so stories do not re-fire when you walk away and return.
-
-### Branching Narrative Events
-
-Location visits and world ticks can trigger scripted events presented as full-screen popups with typewriter text animation. Each event offers **2–4 numbered choices**, and many options are gated behind reputation thresholds. Choices produce concrete effects: reputation axes shift, faction standings change, NPC memories are updated, and the outcome is appended to the chronicle.
-
-### Reputation System
-
-Six reputation axes track the player's standing across different domains:
-
-| Axis | What it reflects |
-|---|---|
-| Valor | Courage in combat and dangerous situations |
-| Wisdom | Thoughtful, scholarly, or diplomatic decisions |
-| Trade | Commercial acumen and mercantile reputation |
-| Shadow | Deception, theft, and dealings in the underworld |
-| Nature | Harmony with the wilderness and its creatures |
-| Arcane | Engagement with magic and the mystical |
-
-High or low scores on any axis gate dialogue options and shape how the world reacts to the player.
-
-### Faction Standing
-
-Six factions each maintain an independent disposition score toward the player. Choices in events shift these scores up or down. NPC records store per-character disposition and a memory list of past interactions — this history is factored into how NPCs respond in future encounters.
-
-### Survival Mechanics
-
-The player has **health** and **hunger** bars rendered in the HUD. Hunger decays with each world tick; when hunger hits zero it drains health instead. Food items consumed from the hotbar restore hunger. Reaching zero health triggers a death screen with an option to restart from the beginning.
-
-### Six-Slot Hotbar
-
-A persistent hotbar mirrors the first six **inventory** slots. New runs start **barehanded** with a waterskin; a short **on-screen tutorial** guides gathering wood, crafting a club, hunting, cooking, and visiting a major settlement. Food, potions, and gear behave according to `items.ts` / crafting recipes.
-
-### Environment Actions
-
-Standing on certain terrain types unlocks contextual actions in the HUD. Terrain-to-action mappings include foraging in forests, fishing on water tiles, hunting in grasslands, and mining near mountains. Each action has a cooldown and may yield item rewards placed into the hotbar.
-
-### Seasonal Cycle
-
-World time is tracked in ticks that accumulate as the player discovers new locations. Every four ticks a season advances through spring → summer → autumn → winter. The current season is displayed in the HUD and flavours periodic world-event blurbs that appear in the chronicle.
-
-### Chronicle Log
-
-Every significant event — location discoveries, narrative choices and their outcomes, world events — is appended to the chronicle. The log is viewable at any time via the player overlay and serves as a persistent record of the run.
-
-### HUD and Overlays
-
-- **HudBar** — health and hunger bars, current location name, season indicator, and environment action buttons
-- **Player overlay** — all six reputation axes, faction standings, NPC relationship list, and run statistics
-- **Chronicle overlay** — full scrollable log of past events and choices
-- **Help overlay** — keyboard shortcut reference, toggled with `?`
-- **Death overlay** — end-of-run summary with restart option
-
-### Title Screen
-
-The title view shows a **low-resolution preview** of the full 10k map (continents, roads, settlements, hamlets) behind the menu. Starting a new game runs `initWorldEntities` (boats, caves, resources, wildlife, settlement and hamlet NPCs), applies starter inventory, and enters the live game shell.
-
-### Canvas Rendering
-
-`WorldMap.tsx` renders tiles, roads, objects, ambient decor, **world entities** (combat, gathering, mounts, caves), and the player. The view pans and zooms; chunks load on demand from `mapGenerator.getChunkData`.
+|--------|-------------|
+| App shell | **React 18**, **TypeScript**, **Vite 5** |
+| Global state | **Zustand** (`src/lib/gameStore.ts`) — one store, actions on the same object shape as `GameState` + methods |
+| World map UI | **HTML5 Canvas** in `WorldMap.tsx` — `requestAnimationFrame` render loop, refs for hot paths (no React per frame for terrain) |
+| Styling | **Tailwind**, shadcn/Radix primitives where used |
+| Motion | **Framer Motion** on title/overlays |
+| Map data | **Procedural** per chunk — no pre-baked 10k×10k array; `getChunkData(cx,cy)` caches chunks in `mapGenerator` |
 
 ---
 
-## Getting Started
+## App routing (`src/pages/Index.tsx`)
 
-```bash
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173` in your browser.
-
-Other scripts:
-
-```bash
-npm run build      # production build
-npm run preview    # preview production build
-npm test           # run Vitest test suite
-npm run lint       # ESLint
-```
+- **`phase === 'title'`** → `TitleScreen` (menu + world preview canvas).
+- **`phase === 'booting'`** → `BootingScreen` (spinner copy only; errors surface on title — see **bootError**).
+- **Else** → `GameScreen` (playing, sailing, dungeon, battle, dead, etc. — all non-title phases share this shell).
 
 ---
 
-## Project Structure
+## Game phases (`GameState.phase` in `gameTypes.ts`)
 
-```
-src/
-├── lib/
-│   ├── gameStore.ts       # Zustand store: all game state, rules, movement, tick logic
-│   ├── gameTypes.ts       # TypeScript interfaces for every game entity
-│   ├── gameData.ts        # Locations, NPCs, scripted events, environment actions
-│   ├── mapGenerator.ts    # Lazy chunks, continents, settlements, roads, objects
-│   ├── hamlets.ts         # Road hamlets + getExtendedLocationCoords
-│   └── utils.ts           # Shared helpers
-├── components/
-│   └── game/
-│       ├── GameScreen.tsx  # Top-level game shell, composes all sub-components
-│       ├── WorldMap.tsx    # HTML5 Canvas rendering and keyboard/mouse input
-│       ├── HudBar.tsx      # HUD vitals, location indicator, terrain actions
-│       ├── Hotbar.tsx      # Six-slot item hotbar
-│       ├── EventPopup.tsx  # Narrative event UI with typewriter and choices
-│       ├── OverlayPanel.tsx# Player stats and chronicle overlays
-│       ├── HelpPanel.tsx   # Keyboard shortcut help overlay
-│       └── TitleScreen.tsx # Title screen and new-game flow
-└── pages/
-    └── Index.tsx           # Route root: switches between title and game phase
-```
+| Phase | Meaning |
+|--------|---------|
+| `title` | Menu; `startGame` allowed |
+| `booting` | Between title and playing; heavy init split across rAFs |
+| `playing` | Overworld |
+| `sailing`, `dungeon`, `battle`, `dead`, `chronicle` | Specialized flows |
+
+**World simulation** (`worldTicker`) is blocked when `worldTickBlocked(state)` is true (event modal, battle, dungeon, death, non-`none` overlay, etc.) — see `worldTicker.ts`.
 
 ---
 
-## To-do List
+## Boot pipeline (architecture)
 
-### Core Systems
+**Goal:** Paint `BootingScreen` before long synchronous work; split work so the main thread can breathe; warm expensive caches before mass `getTileAt`.
 
-- Real-time combat system with melee, ranged, and magic attack types
-- Loot tables and item rarity tiers (common, uncommon, rare, legendary)
-- Stealth mechanics — sneaking, pickpocketing, line-of-sight detection
-- Mount system — horses, carts, and boats for faster overworld travel
-- Inventory system with equipment slots, weapons, and armour
-- Crafting system using gathered resources
-- Skill trees for combat, stealth, diplomacy, and crafting
-- Save/load system with multiple save slots
-- Health bar, hunger, early game progression (expansion of current survival system)
+**Entry:** `startGame()` in `gameStore.ts` — only from `phase === 'title'`; sets `phase: 'booting'`, `bootError: null`.
 
-### World and Settlements
+**Scheduling:** `scheduleAfterPaint(fn)` = **double `requestAnimationFrame`** (fallback `setTimeout`) so the booting UI gets one paint before work.
 
-- Villages, towns, cities, castles — tiered settlement types with distinct economies
-- Continents and a larger map, with lore
-- Dungeon and cave interiors — entering a cave switches the view to a Terraria-style 2D side-scrolling mode with procedurally generated tunnels, ore veins, and underground enemies; exiting returns to the top-down overworld
-- Ruins and procedurally placed points of interest between settlements
-- Day/night cycle affecting NPC behaviour and random events
-- Weather system influencing travel and resource availability
-- Ocean and river navigation with ship travel
-- Biome-specific flora and fauna with seasonal variation
+**Slice 1 — `bootstrapWorldGeometry()`**
 
-### NPCs and Simulation
+1. `setSeed(42)` — clears chunk cache, road cache, **settlement layout caches**, wilderness POI caches, **hamlet cache** (`invalidateHamletCache` via `mapGenerator`).
+2. `ensureRoads()` — builds global trade-road `Set` (Bresenham between `TRADE_CONNECTIONS`).
+3. `warmSettlementRoadIndexes()` — exported from `settlementLayout.ts`; builds **union of all settlement-local road cells** once (`ensureUnionLocalRoads`) so later `getTileAt` → `isSettlementLocalRoad` does not pay first-hit O(all settlements) inside random code paths.
+4. `void getHamlets()` — forces hamlet list build once (memoized module-side).
 
-- Dynamic spawning NPCs, proper progression — NPCs have their own schedules, jobs, and goals; they trade, travel, and react to world events independently of the player
-- World Ticker — every game tick the world advances: harvests ripen, caravans depart, prices shift, wars escalate or end; the player joins a world mid-story, not at the start of one
-- Autonomous NPC economies — merchants restock, farmers sell surplus, bandits raid trade roads; the player can observe, exploit, or disrupt these flows
-- Dialogue trees for NPCs with branching choices — NPC responses reflect current reputation and past player actions
-- NPC companion system — recruit allies who follow and fight alongside the player
-- Disease and plague events that spread between settlements
-- Migration patterns — NPCs relocate when war or famine strikes their home
+**Slice 2 — `buildFreshPlayingStatePayload()`**
 
-### Economy and Politics
+- `initWorldEntities()` — spatial entities (boats, wildlife, NPCs, caravans, hamlet residents, etc.).
+- Markets (`createMarkets`, `buildRoadInnMarkets(getRoadInnSites())`), fog `revealAroundPlayer(createFogMap(), …)`, full default `GameState` fields for a new game.
+- Then **`startTicker()`** starts the world time interval.
 
-- Trade route system — discoverable routes between settlements with varying goods, tariffs, and dangers; controlling or monopolising a route yields recurring income and influence
-- Economy simulation — prices shift based on supply and demand; shortages caused by world events (droughts, wars, blockades) ripple through the market in real time
-- Reputation and fame system — a global notoriety score plus per-faction standing; deeds spread by word-of-mouth through NPC gossip and broadsheets, unlocking unique dialogue, prices, quests, and enemies
-- Faction politics — factions compete for territory and resources on their own; the player can side with, undermine, or play factions against each other
-- Building and siege mechanics for faction warfare
-- Farming, trading, fighting and PvE
-- If sellsword, picking up bounties and hunting down enemy
+**Errors:** Any throw in slice 1 or 2 sets `phase: 'title'`, **`bootError`** to message, logs stack in **DEV**. There is **no other code path** that sends the user back to title from boot except this catch (unless they never left title).
 
-### Quests and Progression
+**UX:** `TitleScreen` shows a dismissible banner when `bootError` is set; `clearBootError()` clears it. `saveSystem.loadFromSlot` sets `bootError: null` when merging save; `saveToSlot` strips `clearBootError` from serialized state like other store methods.
 
-- Quest log and multi-step quest chains
-- Procedural quest generation driven by world-state changes
-- Fishing mini-game with region-specific catches
-- Player housing and base-building
+---
 
-### Endgame and Social
+## Settlement layout (`settlementLayout.ts`) — dictionary
 
-- Multiplayer or co-op exploration mode
+| Symbol | Role |
+|--------|------|
+| `getSettlementLayoutCenter(id)` | Deterministic “layout center” off global roads; **cached per settlement id** in `layoutCenterCache`. |
+| `collectRoadKeysForSettlement` | **Cached** in `roadKeysBySettlement`; heavy Bresenham + bbox lives in `buildRoadKeysForSettlementUncached`. |
+| `getSettlementSidewalkPositions` | Walkable tiles near local roads for NPC placement; uses cached road keys. |
+| `ensureUnionLocalRoads` | Single `Set` of all settlement-local road cell keys; lazy unless warmed. |
+| `warmSettlementRoadIndexes()` | **Public** — forces union build; call during boot before entity/tile storms. |
+| `invalidateSettlementRoadCache()` | Clears union + **both** per-settlement caches; invoked from `setSeed`. |
+| `mergeSettlementLocalRoadsIntoChunk` / `isSettlementLocalRoad` | Chunk painting and `getTileAt` ROAD override. |
 
-### Quality of Life
+**Invariant:** After changing seed or anything that affects layout, caches must invalidate together (`setSeed` already chains this).
 
-- Auto-save on each tick or location change
-- Keyboard shortcut cheatsheet / help overlay (toggle with `?`) *(partially done)*
-- Pause menu with settings (volume, keybinds, UI scale)
-- Tooltips on hover for all HUD icons and stat bars
-- Persistent notifications / message log so missed events can be reviewed
-- Confirmation prompt before dangerous or irreversible actions
-- Colourblind-friendly palette option
-- Responsive layout that works well on mobile and small screens
-- Fast-travel between previously visited locations
-- Adjustable game speed (slow / normal / fast tick rate)
-- Visual indicators for active buffs, debuffs, and status effects
-- Map markers — let the player pin notes on the world map
-- Tutorial / onboarding sequence for new players
-- Sound effects and ambient music tied to locations and seasons
-- Minimap or fog-of-war exploration reveal *(minimap + fog implemented; further polish welcome)*
-- Deeper hamlet economies tied to regional markets
-- Expand Gemini prompts and cache policy for NPC voice consistency
-- Accessibility: screen-reader hints and keyboard-only navigation
-- Undo last action / regret mechanic for critical story choices
-- Localization / i18n framework for multi-language support
-- Performance profiling dashboard (dev-only) for canvas rendering
+---
+
+## Hamlets (`hamlets.ts`) — dictionary
+
+| Symbol | Role |
+|--------|------|
+| `buildHamlets()` | Grid scan (stride **84**, min spacing 36) near global roads, cap **140** sites; uses `ensureRoads`, `getContinentAt`, `farFromNamedSettlements`. |
+| `getHamlets()` | Memoized list; first call pays grid cost. |
+| `invalidateHamletCache()` | Clears `_hamlets`; called from **`setSeed`** so hamlets stay coherent with new world seed. |
+| `getExtendedLocationCoords()` | Named coords + all hamlet ids for travel/discovery UI. |
+| `isHamletId(id)` | `id.startsWith('hamlet_')`. |
+| `mergeHamletChunkRoads` | Called from chunk generator for road bitmask + spur art. |
+
+---
+
+## Map generator (`mapGenerator.ts`) — dictionary
+
+| Symbol | Role |
+|--------|------|
+| `getChunkData(cx,cy)` | Lazy generate + cache `ChunkData` (tiles, roads bitmask, objects, ambient entities). |
+| `getTileAt(x,y)` | Chunk tile + **global** road set + **`isSettlementLocalRoad`** (union). |
+| `ensureRoads()` | Cached `Set<number>` of global road cell indices. |
+| `setSeed(n)` | Resets **all** seed-dependent caches (chunks, roads, settlement caches, wilderness caches, **hamlets**). |
+| `sampleBaseTerrainCode` / `computeTile` | Biome / continent noise; expensive per call. |
+
+---
+
+## World ticker (`worldTicker.ts`) — dictionary
+
+| Concept | Behavior |
+|---------|----------|
+| Default rate | `setInterval(onTick, ~1500ms)`. |
+| `onTick` | Schedules `requestAnimationFrame(runWorldTickPipeline)`. |
+| `runWorldTickPipeline` | **Nested rAFs:** (1) light frame schedules (2) `computeWorldTickPhaseA` (economy/weather/quests…), (3) inner rAF runs `runWorldTickPhaseB` + `applyWorldTickPatch`. Spreads heavy work across frames. |
+| Phase A | `tickWeather`, hunger, markets (periodic), factions, bounty refresh, quest step updates, etc. |
+| Phase B | Caravans, NPC schedules, cooking fires, caravan deliveries, aggro/move enemies, animals flee, periodic **resource spawns** (`newWorldTime % 20`). |
+| Wildlife respawn | `respawnWildlifeFarFrom` on `% 100` worldTime in a **further** deferred rAF. |
+| `applyWorldTickPatch` | Partial `useGameStore.setState` with chronicle cap (`CHRONICLE_CAP`). Also merges **`simEventLog`** via `appendSimEvents` (`SIM_EVENT_CAP` in `simulationEvents.ts`): tick diffs (regional, markets at visited + current location, faction day tick) plus phase-B extras (e.g. escort pay). `simEventsToChronicleEntries` appends `type: 'sim'` chronicle rows for `visibility: 'chronicle'` events. |
+
+**Simulation event spine (`simulationEvents.ts`, `gameTypes.ts` — `SimEvent`, `simEventLog`):**
+
+- **Purpose:** Structured append-only log for progression, causality, future graph edges, and LLM context. Player shop buy/sell records `source: 'player'` trade events.
+- **Caps:** `SIM_EVENT_CAP` (trim oldest). Schema field `schemaVersion` on each event for migrations.
+- **Progression stub:** `progressionRegistry.ts` — `evaluateMilestones` returns `[]` until milestone tables land; `GameState.progressionVersion` and `milestonesUnlocked` persist with saves.
+
+**Performance:** Do not add full scans over `entityById` in tick paths; use `entitiesByKind` / spatial queries.
+
+---
+
+## World entities (`worldEntities.ts`) — dictionary
+
+| Symbol | Role |
+|--------|------|
+| `spatialHash` | `Map<chunkKey, WorldEntity[]>` for proximity. |
+| `entityById` | `Map<id, WorldEntity>`. |
+| `entitiesByKind` | **`Map<EntityKind, WorldEntity[]>`** — updated in `spawnEntity` / `removeEntity`; **`getEntitiesByKind`** returns a **copy** so loops that `removeEntity` stay safe. |
+| `scheduleNpcBucket` | Only `settlement_npc` + `hamlet_npc` for **`tickWorldNpcSchedules`** (round-robin, `NPC_SCHEDULE_BUDGET` per tick). |
+| `registerEntityIndexes` / `unregisterEntityIndexes` | Internal; **`deserializeEntities`** must register same way as spawn. |
+| `tickCaravanMovement` | Iterates **caravan** bucket only (not all entities). |
+| `respawnWildlifeFarFrom` | Ring sampling, capped attempts, cheap terrain rejects. |
+| `initWorldEntities` | Full world entity bootstrap (runs in boot slice 2). |
+
+---
+
+## Fog (`fogOfWar.ts`) — dictionary
+
+- Fog is **per chunk metadata**, `Uint8Array` length `NUM_CX * NUM_CY` (not per-tile megagrid).
+- `createFogMap()`, `revealAroundPlayer`, `revealLocation`, `getRevealLevel` — used by map rendering and `movePlayer`.
+
+---
+
+## Economy / world POI (`economySystem.ts`, `wildernessPoi.ts`)
+
+- `createMarkets` — per named settlement with meta.
+- `getRoadInnSites` — cached trail inns along long trade polylines (`computeRoadInnSitesInternal`); invalidated with seed-related flows via `invalidateWildernessCaches` from `setSeed`.
+
+---
+
+## Save system (`saveSystem.ts`) — dictionary
+
+- **Slots:** `localStorage` keys `chronicle_save_slot_*`, max 4 slots.
+- **Payload:** `{ version, timestamp, state, entities }` — `state` is store minus functions; **`entities`** from `serializeEntities()`. Current **`version`** constant: `SAVE_DATA_VERSION` in `saveSystem.ts` (increment when new persisted fields need defaults).
+- **Load:** `deserializeEntities` then `setState` merge; **`bootError` forced null** after merge. Missing **`simEventLog`**, **`progressionVersion`**, or **`milestonesUnlocked`** are defaulted for older JSON saves.
+
+---
+
+## UI surface map (files)
+
+| File | Responsibility |
+|------|----------------|
+| `Index.tsx` | Phase switch title / booting / game. |
+| `TitleScreen.tsx` | New game, preview canvas, **boot error banner**, keyboard Enter/Space. |
+| `BootingScreen.tsx` | Copy-only loading state. |
+| `GameScreen.tsx` | Overlays, tutorial, phase-specific panels. |
+| `WorldMap.tsx` | Canvas loop, movement interval, fog, chunk bake cache, input. |
+| `HudBar.tsx` | HUD; prefers narrow Zustand selectors where tuned. |
+| `Minimap.tsx` | Terrain sample, roads, locations, hamlets, entities. |
+| `OverlayPanel.tsx` | Overlay router. |
+| `ChronicleView.tsx` | Chronicle UI; entries with **`eventId`** expand to show linked **`SimEvent.deltas`** from `simEventLog`. |
+
+---
+
+## Optional Gemini (`geminiNpc.ts`)
+
+- Env: `VITE_GEMINI_API_KEY`. Used to enrich hamlet dialogue from `interactEntity` when configured. Never commit secrets; `.env.example` documents.
+
+---
+
+## Temporary debug instrumentation (optional cleanup)
+
+Some files still contain **folded `#region agent log`** blocks posting NDJSON to a local ingest URL (`127.0.0.1:7891`) and/or logging slow `movePlayer` / rAF gaps. Safe to remove when performance work is settled; does not affect production logic beyond tiny `fetch` no-ops.
+
+**Files:** `worldTicker.ts`, `gameStore.ts` (`movePlayer`), `WorldMap.tsx` (large rAF gap).
+
+---
+
+## Extension points (where features grow)
+
+| Want to add… | Touch |
+|--------------|--------|
+| New `EntityKind` | `worldEntities.ts` (spawn/remove + **kind bucket** + draw in `WorldMap` + combat/interaction filters) |
+| New settlement / POI | `SETTLEMENTS` / `LOCATION_COORDS` / `gameData` events / `settlementLayout` if layout roads needed |
+| New overlay | `OverlayType` in `gameTypes.ts`, `OverlayPanel`, `GameScreen` |
+| New world-time behavior | `worldTicker.ts` phase A or B; respect `worldTickBlocked` |
+| New save fields | `saveToSlot` strip list + migration if `version` bumps |
+
+---
+
+## Future scope (not built yet — product direction)
+
+Reasonable **next** directions (none guaranteed in repo):
+
+- **Stronger boot UX:** Progress text per slice, optional third rAF if profiling shows one step still dominates.
+- **Runtime sim caps:** Global cap or GC for periodic **resource** entities spawned near player; prevents unbounded `getEntitiesNear` density in one chunk over long sessions.
+- **Worker / incremental chunk pipeline:** Off-main-thread chunk generation (large refactor).
+- **Cloud saves / auth:** Would replace or augment `saveSystem.ts`.
+- **Deeper quest / faction simulation:** More `gameData` + store slices; keep tick work budgeted.
+
+**Out of scope for “small change” expectations:** rewriting the entire renderer, full MMO server, or replacing Zustand without a dedicated migration.
+
+---
+
+## Conventions for agents
+
+- Prefer **small, focused diffs**; match existing naming and file layout.
+- After **seed** or **road** changes, assume **settlement + hamlet caches must stay consistent** — use existing invalidation entry points.
+- **New entity kinds** must update **both** spatial structures **and** `entitiesByKind` (+ `scheduleNpcBucket` if NPC-scheduled).
+- **Boot failures** are surfaced via **`bootError`**; do not silently swallow errors in `startGame` without updating that contract.

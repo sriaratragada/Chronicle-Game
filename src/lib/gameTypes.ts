@@ -180,7 +180,8 @@ export type OverlayType =
   | 'build'
   | 'saveload'
   | 'fasttravel'
-  | 'camp';
+  | 'camp'
+  | 'arcane';
 
 export type ItemType = 'tool' | 'weapon' | 'resource' | 'food' | 'armor' | 'misc' | 'potion' | 'trade_good';
 
@@ -209,6 +210,14 @@ export interface WildPoiProgress {
   looted?: boolean;
   lastFishTick?: number;
   spoken?: boolean;
+}
+
+export interface MilestoneCounters {
+  totalKills: number;
+  totalGoldEarned: number;
+  totalItemsCrafted: number;
+  totalTradeTransactions: number;
+  totalDungeonsCleared: number;
 }
 
 export interface BattleState {
@@ -295,8 +304,10 @@ export interface GameState {
   simEventLog: SimEvent[];
   /** Bump when milestone tables change (save migration). */
   progressionVersion: number;
-  /** Unlocked milestone ids (stub; evaluated later). */
+  /** Unlocked milestone ids. */
   milestonesUnlocked: string[];
+  /** Cumulative counters for milestone tracking. */
+  milestoneCounters: MilestoneCounters;
   currentEvent: GameEvent | null;
   lastResult: string | null;
   visitedLocations: string[];
@@ -320,6 +331,12 @@ export interface GameState {
   wildPoiProgress: Record<string, WildPoiProgress>;
   /** Turn-based duel UI state (Pokémon-style encounter). */
   battleState: BattleState | null;
+
+  /** Arcane / magic system */
+  mana: number;
+  maxMana: number;
+  knownSpells: string[];
+  spellCooldowns: Record<string, number>;
 
   /** When New Game bootstrap throws, message is set here and `phase` returns to title. */
   bootError: string | null;

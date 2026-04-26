@@ -82,6 +82,14 @@ export const ITEMS: Record<string, ItemDef> = {
   realm_map: { id: 'realm_map', name: 'Realm Atlas', icon: '🗺️', type: 'misc', rarity: 'common', stackable: false, maxStack: 1, description: 'A chart of the known world. Use from the hotbar (E) to study roads, settlements, and caves.', value: 8 },
   portable_stove: { id: 'portable_stove', name: 'Portable Stove', icon: '🫕', type: 'tool', rarity: 'uncommon', stackable: false, maxStack: 1, description: 'Cook anywhere without a campfire.', value: 45 },
   void_sigil: { id: 'void_sigil', name: 'Void Sigil', icon: '🜁', type: 'misc', rarity: 'rare', stackable: true, maxStack: 5, description: 'A proof-token from the deep places. Factions pay well for these.', value: 80 },
+
+  // ── Arcane ──
+  mana_potion:       { id: 'mana_potion', name: 'Mana Draught', icon: '🔮', type: 'potion', rarity: 'uncommon', stackable: true, maxStack: 5, description: 'Restores 30 mana.', value: 25 },
+  scroll_flame_bolt: { id: 'scroll_flame_bolt', name: 'Scroll: Flame Bolt', icon: '📜', type: 'misc', rarity: 'uncommon', stackable: true, maxStack: 3, description: 'Teaches the Flame Bolt spell. Single use.', value: 35 },
+  scroll_mend:       { id: 'scroll_mend', name: 'Scroll: Mend', icon: '📜', type: 'misc', rarity: 'uncommon', stackable: true, maxStack: 3, description: 'Teaches the Mend spell. Single use.', value: 40 },
+  scroll_shadow_step:{ id: 'scroll_shadow_step', name: 'Scroll: Shadow Step', icon: '📜', type: 'misc', rarity: 'rare', stackable: true, maxStack: 3, description: 'Teaches the Shadow Step spell. Single use.', value: 60 },
+  scroll_reveal:     { id: 'scroll_reveal', name: 'Scroll: Reveal', icon: '📜', type: 'misc', rarity: 'uncommon', stackable: true, maxStack: 3, description: 'Teaches the Reveal spell. Single use.', value: 45 },
+  scroll_tremor:     { id: 'scroll_tremor', name: 'Scroll: Tremor', icon: '📜', type: 'misc', rarity: 'rare', stackable: true, maxStack: 3, description: 'Teaches the Tremor spell. Single use.', value: 65 },
 };
 
 export function getItemDef(id: string): ItemDef | undefined {

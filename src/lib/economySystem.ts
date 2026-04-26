@@ -70,6 +70,25 @@ export function createMarkets(): Record<string, Market> {
         priceMultiplier: 0.8 + Math.random() * 0.4,
       };
     });
+
+    // Arcane goods in cities and capitals
+    if (meta.type === 'capital' || meta.type === 'city') {
+      const arcaneGoods: Array<[string, number]> = [
+        ['mana_potion', 3 + Math.floor(Math.random() * 4)],
+        ['scroll_flame_bolt', 1 + Math.floor(Math.random() * 2)],
+        ['scroll_mend', 1 + Math.floor(Math.random() * 2)],
+        ['scroll_reveal', 1 + Math.floor(Math.random() * 2)],
+      ];
+      if (meta.type === 'capital') {
+        arcaneGoods.push(['scroll_shadow_step', 1]);
+        arcaneGoods.push(['scroll_tremor', 1]);
+      }
+      for (const [itemId, stock] of arcaneGoods) {
+        const def = ITEMS[itemId];
+        if (def) items.push({ itemId, stock, basePrice: def.value ?? 30, priceMultiplier: 1.0 + Math.random() * 0.3 });
+      }
+    }
+
     markets[locId] = { locationId: locId, items };
   }
   return markets;

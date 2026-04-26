@@ -36,6 +36,9 @@ import { generateNpcDialogue, isGeminiConfigured } from './geminiNpc';
 import { findNearestWildernessPoi, getRoadInnSites } from './wildernessPoi';
 import { rollFishingLoot } from './fishingLoot';
 import { appendSimEvents, recordPlayerShopBuy, recordPlayerShopSell, simEventsToChronicleEntries, SIM_EVENT_CAP } from './simulationEvents';
+import { evaluateMilestones, MILESTONES } from './progressionRegistry';
+import { SPELLS } from './arcaneSystem';
+import { toast } from 'sonner';
 
 const SEASON_ORDER: Season[] = ['thaw', 'summer', 'harvest', 'dark'];
 const TICKS_PER_SEASON = 12;
@@ -110,6 +113,45 @@ function makeStarterInventory(): Inventory {
 
 function playerNearCookingFire(px: number, py: number): boolean {
   return getEntitiesNear(px, py, 5).some(e => e.kind === 'cooking_fire');
+}
+
+function applyMilestoneCheck(candidateState: GameState): {
+  milestonesUnlocked: string[];
+  goldBonus: number;
+  skills: SkillTree;
+  reputation: Reputation;
+  playerTitle: string;
+  extraChronicle: ChronicleEntry[];
+} {
+  const newIds = evaluateMilestones(candidateState);
+  if (newIds.length === 0) {
+    return { milestonesUnlocked: candidateState.milestonesUnlocked, goldBonus: 0, skills: candidateState.skills, reputation: candidateState.reputation, playerTitle: candidateState.playerTitle, extraChronicle: [] };
+  }
+  let goldBonus = 0;
+  let skills = candidateState.skills;
+  const rep = { ...candidateState.reputation };
+  const extraChronicle: ChronicleEntry[] = [];
+  for (const id of newIds) {
+    const m = MILESTONES[id];
+    if (!m) continue;
+    toast(`🏆 ${m.label}`, { description: m.reward.text, duration: 5000 });
+    if (m.reward.gold) goldBonus += m.reward.gold;
+    if (m.reward.skillXp) skills = addXp(skills, m.reward.skillXp.skill, m.reward.skillXp.amount);
+    if (m.reward.repBoost) {
+      for (const [k, v] of Object.entries(m.reward.repBoost)) {
+        if (v) rep[k as keyof Reputation] = Math.min(100, (rep[k as keyof Reputation] ?? 0) + v);
+      }
+    }
+    extraChronicle.push({ tick: candidateState.tick, season: candidateState.season, text: `Achievement unlocked: "${m.label}" — ${m.reward.text}`, type: 'action' });
+  }
+  return {
+    milestonesUnlocked: [...candidateState.milestonesUnlocked, ...newIds],
+    goldBonus,
+    skills,
+    reputation: rep,
+    playerTitle: getPlayerTitle(rep as unknown as Record<string, number>),
+    extraChronicle,
+  };
 }
 
 function worldEventsFromRegional(st: GameState): string[] {
@@ -211,6 +253,7 @@ function buildFreshPlayingStatePayload(): Partial<GameState> & { phase: 'playing
     simEventLog: [],
     progressionVersion: 0,
     milestonesUnlocked: [],
+    milestoneCounters: { totalKills: 0, totalGoldEarned: 0, totalItemsCrafted: 0, totalTradeTransactions: 0, totalDungeonsCleared: 0 },
     currentEvent: null,
     lastResult: null,
     visitedLocations: ['ashenford'],
@@ -224,6 +267,10 @@ function buildFreshPlayingStatePayload(): Partial<GameState> & { phase: 'playing
     shopMarketId: null,
     wildPoiProgress: {},
     battleState: null,
+    mana: 30,
+    maxMana: 30,
+    knownSpells: [],
+    spellCooldowns: {},
   };
 }
 
@@ -262,6 +309,8 @@ interface GameStore extends GameState {
   battleGuardAction: () => void;
   battleFleeAction: () => void;
   clearBootError: () => void;
+  giftNpc: (npcId: string, itemId: string) => void;
+  castSpellAction: (spellId: string) => void;
 }
 
 const starterInv = makeStarterInventory();
@@ -313,6 +362,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   simEventLog: [],
   progressionVersion: 0,
   milestonesUnlocked: [],
+  milestoneCounters: { totalKills: 0, totalGoldEarned: 0, totalItemsCrafted: 0, totalTradeTransactions: 0, totalDungeonsCleared: 0 },
   currentEvent: null,
   lastResult: null,
   visitedLocations: [],
@@ -326,6 +376,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   shopMarketId: null,
   wildPoiProgress: {},
   battleState: null,
+  mana: 30,
+  maxMana: 30,
+  knownSpells: [],
+  spellCooldowns: {},
   bootError: null,
 
   startGame: () => {
@@ -385,11 +439,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } else if (def.type === 'potion') {
       let newHealth = state.health;
       let newHunger = state.hunger;
+      let newMana = state.mana;
       if (slot.itemId === 'health_potion') newHealth = Math.min(state.maxHealth, newHealth + 30);
       if (slot.itemId === 'stamina_potion') newHunger = Math.min(100, newHunger + 30);
+      if (slot.itemId === 'mana_potion') newMana = Math.min(state.maxMana, newMana + 30);
       const newInv = removeFromInventory(state.inventory, slot.itemId, 1);
       const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler drank a ${def.name}.`, type: 'action' };
-      set({ health: newHealth, hunger: newHunger, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
+      set({ health: newHealth, hunger: newHunger, mana: newMana, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
+    } else if (slot.itemId === 'crystal') {
+      const manaGain = 15;
+      const newMana = Math.min(state.maxMana, state.mana + manaGain);
+      const newInv = removeFromInventory(state.inventory, 'crystal', 1);
+      const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler crushed a Crystal Shard, absorbing its arcane energy (+${manaGain} mana).`, type: 'action' };
+      set({ mana: newMana, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
+    } else if (slot.itemId.startsWith('scroll_')) {
+      const spellEntry = Object.values(SPELLS).find(s => s.scrollId === slot.itemId);
+      if (!spellEntry) return;
+      if (state.knownSpells.includes(spellEntry.id)) {
+        set({ lastResult: `You already know ${spellEntry.name}.` });
+        return;
+      }
+      const newInv = removeFromInventory(state.inventory, slot.itemId, 1);
+      const newKnown = [...state.knownSpells, spellEntry.id];
+      const repGain = 3;
+      const newRep = { ...state.reputation, arcane: Math.min(100, state.reputation.arcane + repGain) };
+      const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler studied the scroll and learned the spell: ${spellEntry.name}.`, type: 'action' };
+      toast(`✨ Spell Learned: ${spellEntry.name}`, { description: spellEntry.description, duration: 5000 });
+      set({ knownSpells: newKnown, reputation: newRep, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
     } else if (slot.itemId === 'realm_map') {
       if (state.phase !== 'playing' && state.phase !== 'sailing') return;
       set({ overlay: state.overlay === 'map' ? 'none' : 'map', lastResult: null });
@@ -1061,13 +1137,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let tut = state.tutorialObjective;
     if (result.killed && ['deer', 'sheep', 'rabbit'].includes(String(result.targetKind)) && tut === 2) tut = 3;
 
+    const newCounters = result.killed
+      ? { ...state.milestoneCounters, totalKills: state.milestoneCounters.totalKills + 1, totalGoldEarned: state.milestoneCounters.totalGoldEarned + (result.loot?.gold ?? 0) }
+      : state.milestoneCounters;
+    const ms = applyMilestoneCheck({ ...state, skills: newSkills, inventory: inv, gold, milestoneCounters: newCounters });
+
     set({
-      skills: newSkills,
+      skills: ms.skills,
+      reputation: ms.reputation,
+      playerTitle: ms.playerTitle,
       quests: newQuests,
       inventory: inv,
       hotbar: inventoryToHotbar(inv),
-      gold,
-      chronicle: [...state.chronicle, ...newChronicle],
+      gold: gold + ms.goldBonus,
+      milestoneCounters: newCounters,
+      milestonesUnlocked: ms.milestonesUnlocked,
+      chronicle: [...state.chronicle, ...newChronicle, ...ms.extraChronicle],
       tutorialObjective: tut,
     });
   },
@@ -1112,7 +1197,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let tut = state.tutorialObjective;
     if (recipe.id === 'craft_wooden_club' && tut === 1) tut = 2;
     if (recipe.id === 'cook_meat' && tut === 3) tut = 4;
-    set({ inventory: newInv, hotbar: inventoryToHotbar(newInv), skills: newSkills, chronicle: [...state.chronicle, entry], tutorialObjective: tut });
+    const newCounters = { ...state.milestoneCounters, totalItemsCrafted: state.milestoneCounters.totalItemsCrafted + 1 };
+    const ms = applyMilestoneCheck({ ...state, skills: newSkills, inventory: newInv, milestoneCounters: newCounters });
+    set({
+      inventory: newInv,
+      hotbar: inventoryToHotbar(newInv),
+      skills: ms.skills,
+      reputation: ms.reputation,
+      playerTitle: ms.playerTitle,
+      gold: state.gold + ms.goldBonus,
+      milestoneCounters: newCounters,
+      milestonesUnlocked: ms.milestonesUnlocked,
+      chronicle: [...state.chronicle, entry, ...ms.extraChronicle],
+      tutorialObjective: tut,
+    });
   },
 
   selectPerkAction: (perkId: string) => {
@@ -1166,14 +1264,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     const simLog = appendSimEvents(state.simEventLog, [tradeEv], SIM_EVENT_CAP);
     const chronSim = simEventsToChronicleEntries([tradeEv]);
+    const newCounters = { ...state.milestoneCounters, totalTradeTransactions: state.milestoneCounters.totalTradeTransactions + 1 };
+    const ms = applyMilestoneCheck({ ...state, gold: state.gold - totalCost, inventory: newInv, milestoneCounters: newCounters });
     set({
-      gold: state.gold - totalCost,
+      gold: state.gold - totalCost + ms.goldBonus,
       inventory: newInv,
       hotbar: inventoryToHotbar(newInv),
       markets: { ...state.markets, [mkey]: newMarket },
       minorNpcState: minorPatch,
       simEventLog: simLog,
-      chronicle: [...state.chronicle, ...chronSim],
+      milestoneCounters: newCounters,
+      milestonesUnlocked: ms.milestonesUnlocked,
+      reputation: ms.reputation,
+      playerTitle: ms.playerTitle,
+      chronicle: [...state.chronicle, ...chronSim, ...ms.extraChronicle],
     });
   },
 
@@ -1219,15 +1323,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
         chron = [...state.chronicle, { tick: state.tick, season: state.season, text: 'The traveler fell in single combat.', type: 'action' as const }];
       }
     }
+    const killed = foeHp <= 0;
+    const killLootGold = killed ? getKillLoot(bs.foeKind, state.tick).gold : 0;
+    const newCounters = killed
+      ? { ...state.milestoneCounters, totalKills: state.milestoneCounters.totalKills + 1, totalGoldEarned: state.milestoneCounters.totalGoldEarned + killLootGold }
+      : state.milestoneCounters;
+    const ms = killed ? applyMilestoneCheck({ ...state, skills, inventory: inv, gold, milestoneCounters: newCounters }) : null;
     set({
       phase,
       battleState: nextBattle,
       inventory: inv,
       hotbar: inventoryToHotbar(inv),
-      gold,
-      skills,
+      gold: gold + (ms?.goldBonus ?? 0),
+      skills: ms?.skills ?? skills,
       health,
-      chronicle: chron,
+      chronicle: [...chron, ...(ms?.extraChronicle ?? [])],
+      ...(killed ? { milestoneCounters: newCounters, milestonesUnlocked: ms!.milestonesUnlocked, reputation: ms!.reputation, playerTitle: ms!.playerTitle } : {}),
     });
   },
 
@@ -1307,12 +1418,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
     const simLog = appendSimEvents(state.simEventLog, [tradeEv], SIM_EVENT_CAP);
     const chronSim = simEventsToChronicleEntries([tradeEv]);
+    const newCounters = { ...state.milestoneCounters, totalTradeTransactions: state.milestoneCounters.totalTradeTransactions + 1, totalGoldEarned: state.milestoneCounters.totalGoldEarned + revenue };
+    const ms = applyMilestoneCheck({ ...state, gold: state.gold + revenue, inventory: newInv, milestoneCounters: newCounters });
     set({
-      gold: state.gold + revenue,
+      gold: state.gold + revenue + ms.goldBonus,
       inventory: newInv,
       hotbar: inventoryToHotbar(newInv),
       simEventLog: simLog,
-      chronicle: [...state.chronicle, ...chronSim],
+      milestoneCounters: newCounters,
+      milestonesUnlocked: ms.milestonesUnlocked,
+      reputation: ms.reputation,
+      playerTitle: ms.playerTitle,
+      chronicle: [...state.chronicle, ...chronSim, ...ms.extraChronicle],
     });
   },
 
@@ -1391,6 +1508,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         });
       }
     }
+    const wasCooldownOk = run ? (state.worldTime - (state.clearedCaves[run.caveId] ?? 0)) > 360 : false;
+    const newCounters = (run && wasCooldownOk)
+      ? { ...state.milestoneCounters, totalDungeonsCleared: state.milestoneCounters.totalDungeonsCleared + 1 }
+      : state.milestoneCounters;
+    const ms = (run && wasCooldownOk) ? applyMilestoneCheck({ ...state, inventory: inv, milestoneCounters: newCounters }) : null;
     set({
       phase: 'playing',
       activeCaveId: null,
@@ -1400,7 +1522,131 @@ export const useGameStore = create<GameStore>((set, get) => ({
       inventory: inv,
       hotbar: inventoryToHotbar(inv),
       clearedCaves: clears,
-      chronicle: [...state.chronicle, ...entries],
+      gold: state.gold + (ms?.goldBonus ?? 0),
+      milestoneCounters: newCounters,
+      ...(ms ? { milestonesUnlocked: ms.milestonesUnlocked, skills: ms.skills, reputation: ms.reputation, playerTitle: ms.playerTitle } : {}),
+      chronicle: [...state.chronicle, ...entries, ...(ms?.extraChronicle ?? [])],
+    });
+  },
+
+  giftNpc: (npcId: string, itemId: string) => {
+    const state = get();
+    const def = ITEMS[itemId];
+    if (!def || !def.value || countItem(state.inventory, itemId) < 1) return;
+    const newInv = removeFromInventory(state.inventory, itemId, 1);
+    const dispGain = Math.max(2, Math.min(15, Math.floor(def.value * 0.4)));
+
+    // Update named NPC
+    let newNpcs = state.npcs;
+    const npcIdx = state.npcs.findIndex(n => n.id === npcId);
+    if (npcIdx >= 0) {
+      newNpcs = [...state.npcs];
+      const npc = { ...newNpcs[npcIdx] };
+      npc.disposition = Math.min(100, npc.disposition + dispGain);
+      npc.memories = [...npc.memories, { event: `Received ${def.name} as a gift.`, tick: state.tick, sentiment: 'positive' as const }].slice(-10);
+      newNpcs[npcIdx] = npc;
+    }
+
+    // Update minor NPC
+    let newMinor = state.minorNpcState;
+    if (npcIdx < 0) {
+      const prev = state.minorNpcState[npcId] ?? { memories: [], disposition: 0, lastSeenTick: 0 };
+      newMinor = { ...state.minorNpcState, [npcId]: { ...prev, disposition: Math.min(100, prev.disposition + dispGain), memories: [...prev.memories, `Received ${def.name}.`].slice(-12) } };
+    }
+
+    // Faction standing ripple (1 point per gift for affiliated named NPCs)
+    let newFactions = state.factions;
+    const npc = state.npcs[npcIdx];
+    if (npc && npc.faction !== 'none' && npc.faction in state.factions) {
+      newFactions = { ...state.factions, [npc.faction]: Math.min(100, (state.factions[npc.faction as keyof FactionStanding] ?? 0) + 1) };
+    }
+
+    const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler gifted ${def.name} to ${npc?.name ?? 'a stranger'}. (+${dispGain} disposition)`, type: 'npc' };
+    const ms = applyMilestoneCheck({ ...state, inventory: newInv, npcs: newNpcs, factions: newFactions, minorNpcState: newMinor });
+    set({
+      inventory: newInv,
+      hotbar: inventoryToHotbar(newInv),
+      npcs: newNpcs,
+      minorNpcState: newMinor,
+      factions: newFactions,
+      reputation: ms.reputation,
+      playerTitle: ms.playerTitle,
+      gold: state.gold + ms.goldBonus,
+      milestonesUnlocked: ms.milestonesUnlocked,
+      chronicle: [...state.chronicle, entry, ...ms.extraChronicle],
+      lastResult: `You give ${def.name}. Their eyes soften. (+${dispGain} disposition)`,
+    });
+  },
+
+  castSpellAction: (spellId: string) => {
+    const state = get();
+    if (state.phase !== 'playing' && state.phase !== 'battle') return;
+    const spell = SPELLS[spellId];
+    if (!spell) return;
+    if (!state.knownSpells.includes(spellId)) return;
+    if (state.mana < spell.manaCost) {
+      set({ lastResult: `Not enough mana. Need ${spell.manaCost}, have ${state.mana}.` });
+      return;
+    }
+    const cooldownUntil = state.spellCooldowns[spellId] ?? 0;
+    if (state.tick < cooldownUntil) {
+      set({ lastResult: `${spell.name} is still cooling down.` });
+      return;
+    }
+
+    const newMana = state.mana - spell.manaCost;
+    const newCooldowns = { ...state.spellCooldowns, [spellId]: state.tick + spell.cooldownTicks };
+    const chronicle: ChronicleEntry[] = [];
+    let health = state.health;
+    let battleState = state.battleState;
+    let fog = state.fog;
+    const newRep = { ...state.reputation, arcane: Math.min(100, state.reputation.arcane + 1) };
+
+    switch (spellId) {
+      case 'flame_bolt':
+        if (state.phase !== 'battle' || !battleState) {
+          set({ lastResult: 'Flame Bolt requires a battle target.' });
+          return;
+        }
+        battleState = { ...battleState, foeHp: Math.max(0, battleState.foeHp - 20), log: [...battleState.log, '🔥 Flame Bolt strikes for 20!'] };
+        chronicle.push({ tick: state.tick, season: state.season, text: 'Cast Flame Bolt, dealing 20 arcane damage.', type: 'action' });
+        break;
+      case 'mend': {
+        const healed = Math.min(25, state.maxHealth - state.health);
+        health = state.health + healed;
+        chronicle.push({ tick: state.tick, season: state.season, text: `Mend closed wounds — +${healed} health.`, type: 'action' });
+        break;
+      }
+      case 'shadow_step':
+        if (state.phase === 'battle') {
+          chronicle.push({ tick: state.tick, season: state.season, text: 'Shadow Step — the traveler dissolved into darkness, escaping the fight.', type: 'action' });
+          set({ phase: 'playing', battleState: null, mana: newMana, spellCooldowns: newCooldowns, reputation: newRep, chronicle: [...state.chronicle, ...chronicle] });
+          return;
+        }
+        chronicle.push({ tick: state.tick, season: state.season, text: 'Shadow Step — a blink through shadow.', type: 'action' });
+        break;
+      case 'reveal':
+        fog = revealAroundPlayer(state.fog, state.playerX, state.playerY, 280);
+        chronicle.push({ tick: state.tick, season: state.season, text: 'Reveal — the arcane eye illuminated the land.', type: 'action' });
+        break;
+      case 'tremor':
+        if (state.phase !== 'battle' || !battleState) {
+          set({ lastResult: 'Tremor requires a battle target.' });
+          return;
+        }
+        battleState = { ...battleState, playerGuarded: true, log: [...battleState.log, '💫 Tremor stuns the foe! Their next strike is halved.'] };
+        chronicle.push({ tick: state.tick, season: state.season, text: 'Tremor shook the battlefield, stunning the foe.', type: 'action' });
+        break;
+    }
+
+    set({
+      mana: newMana,
+      spellCooldowns: newCooldowns,
+      health,
+      battleState,
+      fog,
+      reputation: newRep,
+      chronicle: [...state.chronicle, ...chronicle],
     });
   },
 }));

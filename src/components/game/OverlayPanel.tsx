@@ -33,6 +33,7 @@ export default function OverlayPanel() {
         setOverlay(overlay === 'map' ? 'none' : 'map');
       }
       if (e.key === 'F5') { e.preventDefault(); setOverlay(overlay === 'saveload' ? 'none' : 'saveload'); }
+      if (e.key === 'z' || e.key === 'Z') setOverlay(overlay === 'arcane' ? 'none' : 'arcane');
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);

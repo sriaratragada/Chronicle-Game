@@ -23,6 +23,7 @@ import FastTravelPanel from '@/components/game/FastTravelPanel';
 import RealmAtlasPanel, { prefetchAtlasTerrainCache } from '@/components/game/RealmAtlasPanel';
 import CampStashPanel from '@/components/game/CampStashPanel';
 import BattleScreen from '@/components/game/BattleScreen';
+import ArcanePanel from '@/components/game/ArcanePanel';
 
 function DialogueOverlay() {
   const activeDialogue = useGameStore(s => s.activeDialogue);
@@ -107,6 +108,7 @@ export default function GameScreen() {
       <FastTravelPanel />
       <RealmAtlasPanel />
       <CampStashPanel />
+      <ArcanePanel />
       {phase !== 'dungeon' && <DialogueOverlay />}
 
       {/* Death Screen */}

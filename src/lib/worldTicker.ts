@@ -89,6 +89,7 @@ interface WorldTickScratch {
   newQuests: GameState['quests'];
   escortId: string | null;
   newGold: number;
+  newMana: number;
   /** Player / caravan sim events emitted during phase B (e.g. escort pay). */
   extraSimEvents: SimEvent[];
   simIdIndex: { n: number };
@@ -173,6 +174,8 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
     }
   }
 
+  const newMana = Math.min(state.maxMana ?? 30, (state.mana ?? 0) + 2);
+
   let escortId = state.escortCaravanId;
   if (escortId && !getEntityById(escortId)) escortId = null;
 
@@ -204,6 +207,7 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
     newQuests,
     escortId,
     newGold: state.gold,
+    newMana,
     extraSimEvents: [],
     simIdIndex: { n: 0 },
   };
@@ -379,6 +383,7 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
     regionalModifiers: newRegional,
     gold: newGold,
     escortCaravanId: escortId,
+    mana: scratch.newMana,
   };
   if (newWeather !== state.weather) patch.weather = newWeather;
   if (newMarkets !== state.markets) patch.markets = newMarkets;

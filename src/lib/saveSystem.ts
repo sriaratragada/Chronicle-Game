@@ -57,7 +57,7 @@ export function saveToSlot(slot: number) {
       advanceTick: undefined, setOverlay: undefined, advanceTutorial: undefined,
       performEnvironmentAction: undefined, interactEntity: undefined,
       battleStrikeAction: undefined, battleGuardAction: undefined, battleFleeAction: undefined,
-      clearBootError: undefined,
+      clearBootError: undefined, giftNpc: undefined, castSpellAction: undefined,
     },
     entities: entityJson,
   };
@@ -85,6 +85,13 @@ export function loadFromSlot(slot: number): boolean {
     if (!Array.isArray(clean.simEventLog)) clean.simEventLog = [];
     if (clean.progressionVersion === undefined) clean.progressionVersion = 0;
     if (!Array.isArray(clean.milestonesUnlocked)) clean.milestonesUnlocked = [];
+    if (!clean.milestoneCounters || typeof clean.milestoneCounters !== 'object') {
+      clean.milestoneCounters = { totalKills: 0, totalGoldEarned: 0, totalItemsCrafted: 0, totalTradeTransactions: 0, totalDungeonsCleared: 0 };
+    }
+    if (typeof clean.mana !== 'number') clean.mana = 30;
+    if (typeof clean.maxMana !== 'number') clean.maxMana = 30;
+    if (!Array.isArray(clean.knownSpells)) clean.knownSpells = [];
+    if (!clean.spellCooldowns || typeof clean.spellCooldowns !== 'object') clean.spellCooldowns = {};
     useGameStore.setState(clean as any);
     return true;
   } catch {

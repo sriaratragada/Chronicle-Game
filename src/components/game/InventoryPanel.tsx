@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { ITEMS } from '@/lib/items';
 
 const EQUIP_SLOTS = ['mainhand', 'offhand', 'helm', 'chest', 'legs', 'boots', 'amulet'];
 
-export default function InventoryPanel() {
+function InventoryPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const inventory = useGameStore(s => s.inventory);
@@ -75,3 +76,5 @@ export default function InventoryPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(InventoryPanel);

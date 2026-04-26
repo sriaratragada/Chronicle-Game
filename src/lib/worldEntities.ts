@@ -37,10 +37,16 @@ const spatialHash = new Map<number, WorldEntity[]>();
 const entityById = new Map<string, WorldEntity>();
 let nextId = 1;
 
+const WILD_ANIMAL_KINDS: EntityKind[] = ['deer', 'sheep', 'rabbit', 'wolf', 'bear', 'bandit'];
+
 /** Per-kind lists so tick paths avoid scanning all entities (O(N) → O(k)). */
 const entitiesByKind = new Map<EntityKind, WorldEntity[]>();
 /** settlement_npc + hamlet_npc only, for schedule ticks without full scans. */
 const scheduleNpcBucket: WorldEntity[] = [];
+/** Live count of wildlife kinds — avoids full scan in countWildlifeEntities. */
+let _wildlifeCount = 0;
+
+const EMPTY_KIND: readonly WorldEntity[] = [];
 
 function bucketForKind(kind: EntityKind): WorldEntity[] {
   let b = entitiesByKind.get(kind);
@@ -51,11 +57,17 @@ function bucketForKind(kind: EntityKind): WorldEntity[] {
   return b;
 }
 
+/** O(1) removal via swap-and-pop — order within bucket is irrelevant. */
+function swapPop(arr: WorldEntity[], entity: WorldEntity) {
+  const i = arr.indexOf(entity);
+  if (i === -1) return;
+  arr[i] = arr[arr.length - 1]!;
+  arr.pop();
+}
+
 function removeFromKindBucket(entity: WorldEntity) {
   const b = entitiesByKind.get(entity.kind);
-  if (!b) return;
-  const i = b.indexOf(entity);
-  if (i !== -1) b.splice(i, 1);
+  if (b) swapPop(b, entity);
 }
 
 function registerEntityIndexes(entity: WorldEntity) {
@@ -63,14 +75,15 @@ function registerEntityIndexes(entity: WorldEntity) {
   if (entity.kind === 'settlement_npc' || entity.kind === 'hamlet_npc') {
     scheduleNpcBucket.push(entity);
   }
+  if (WILD_ANIMAL_KINDS.includes(entity.kind)) _wildlifeCount++;
 }
 
 function unregisterEntityIndexes(entity: WorldEntity) {
   removeFromKindBucket(entity);
   if (entity.kind === 'settlement_npc' || entity.kind === 'hamlet_npc') {
-    const i = scheduleNpcBucket.indexOf(entity);
-    if (i !== -1) scheduleNpcBucket.splice(i, 1);
+    swapPop(scheduleNpcBucket, entity);
   }
+  if (WILD_ANIMAL_KINDS.includes(entity.kind)) _wildlifeCount--;
 }
 
 function chunkKey(x: number, y: number): number {
@@ -97,10 +110,7 @@ export function removeEntity(id: string) {
   entityById.delete(id);
   const key = chunkKey(entity.x, entity.y);
   const arr = spatialHash.get(key);
-  if (arr) {
-    const idx = arr.indexOf(entity);
-    if (idx !== -1) arr.splice(idx, 1);
-  }
+  if (arr) swapPop(arr, entity);
 }
 
 export function moveEntity(id: string, nx: number, ny: number) {
@@ -110,7 +120,7 @@ export function moveEntity(id: string, nx: number, ny: number) {
   const newKey = chunkKey(nx, ny);
   if (oldKey !== newKey) {
     const arr = spatialHash.get(oldKey);
-    if (arr) { const idx = arr.indexOf(entity); if (idx !== -1) arr.splice(idx, 1); }
+    if (arr) swapPop(arr, entity);
     if (!spatialHash.has(newKey)) spatialHash.set(newKey, []);
     spatialHash.get(newKey)!.push(entity);
   }
@@ -149,10 +159,9 @@ export function clearAllEntities() {
   entityById.clear();
   entitiesByKind.clear();
   scheduleNpcBucket.length = 0;
+  _wildlifeCount = 0;
   nextId = 1;
 }
-
-const WILD_ANIMAL_KINDS: EntityKind[] = ['deer', 'sheep', 'rabbit', 'wolf', 'bear', 'bandit'];
 
 /** Open grazing ground — herbivores cluster and respawn more often here. */
 function isPlainTileType(tn: string): boolean {
@@ -160,11 +169,7 @@ function isPlainTileType(tn: string): boolean {
 }
 
 export function countWildlifeEntities(): number {
-  let n = 0;
-  entityById.forEach(e => {
-    if (WILD_ANIMAL_KINDS.includes(e.kind)) n++;
-  });
-  return n;
+  return _wildlifeCount;
 }
 
 // Spawn initial world entities (boats at docks, cave entrances)
@@ -526,9 +531,8 @@ export function tickCaravanMovement(): void {
   }
 }
 
-export function getEntitiesByKind(kind: EntityKind): WorldEntity[] {
-  const b = entitiesByKind.get(kind);
-  return b ? [...b] : [];
+export function getEntitiesByKind(kind: EntityKind): readonly WorldEntity[] {
+  return entitiesByKind.get(kind) ?? EMPTY_KIND;
 }
 
 const RESPAWN_RING_MIN = 96;

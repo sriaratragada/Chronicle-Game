@@ -39,23 +39,6 @@ const CHRONICLE_CAP = 400;
 const DEFAULT_TICK_MS = 1500;
 let tickInterval: ReturnType<typeof setInterval> | null = null;
 
-// #region agent log
-function dbgWorld(hypothesisId: string, location: string, message: string, data: Record<string, unknown>): void {
-  fetch('http://127.0.0.1:7891/ingest/68e880b8-e871-43be-946d-757508d96764', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a7e92f' },
-    body: JSON.stringify({
-      sessionId: 'a7e92f',
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-}
-// #endregion
-
 function computeFactionStress(factions: Record<string, { treasury: number; atWarWith: string[] }>): number {
   let s = 0;
   for (const f of Object.values(factions)) {
@@ -105,9 +88,6 @@ interface WorldTickScratch {
 }
 
 function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
-  // #region agent log
-  const _tPhaseA0 = performance.now();
-  // #endregion
   const newWorldTime = state.worldTime + 1;
   const newDayNight = getDayNightPhase(newWorldTime);
 
@@ -272,17 +252,6 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
   let escortId = state.escortCaravanId;
   if (escortId && !getEntityById(escortId)) escortId = null;
 
-  // #region agent log
-  dbgWorld('A', 'worldTicker.ts:phaseA', 'computeWorldTickPhaseA_ms', {
-    ms: Math.round((performance.now() - _tPhaseA0) * 100) / 100,
-    wt: newWorldTime,
-    m10: newWorldTime % 10 === 0,
-    m12: newWorldTime % 12 === 0,
-    m50: newWorldTime % 50 === 0,
-    mDay: newWorldTime % TICKS_PER_DAY === 0,
-  });
-  // #endregion
-
   return {
     state,
     newWorldTime,
@@ -310,9 +279,6 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
 }
 
 function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void {
-  // #region agent log
-  const _tB0 = performance.now();
-  // #endregion
   const { state, newWorldTime, newDayNight } = scratch;
   let newHealth = scratch.newHealth;
   let newPhase = scratch.newPhase;
@@ -370,8 +336,9 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
 
   const px = latest.playerX;
   const py = latest.playerY;
-  const aggroEnemies = getEntitiesNear(px, py, 15);
-  for (const enemy of aggroEnemies) {
+  // Single spatial scan covers both aggro (r=15) and flee (r=20) ranges
+  const nearbyEntities = getEntitiesNear(px, py, 20);
+  for (const enemy of nearbyEntities) {
     if (!['wolf', 'bandit', 'warband', 'bear'].includes(enemy.kind)) continue;
     const dist = Math.sqrt((enemy.x - px) ** 2 + (enemy.y - py) ** 2);
     const aggroR = getAggroRadius(enemy);
@@ -389,8 +356,7 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
     }
   }
 
-  const nearbyAnimals = getEntitiesNear(px, py, 20);
-  for (const animal of nearbyAnimals) {
+  for (const animal of nearbyEntities) {
     if (!['deer', 'sheep', 'rabbit'].includes(animal.kind)) continue;
     const dist = Math.sqrt((animal.x - px) ** 2 + (animal.y - py) ** 2);
     if (dist < 8) {
@@ -419,12 +385,6 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
   scratch.newPhase = newPhase;
   scratch.newMarkets = newMarkets;
   scratch.newGold = newGold;
-  // #region agent log
-  dbgWorld('A', 'worldTicker.ts:phaseB', 'runWorldTickPhaseB_ms', {
-    ms: Math.round((performance.now() - _tB0) * 100) / 100,
-    wt: scratch.newWorldTime,
-  });
-  // #endregion
 }
 
 function applyWorldTickPatch(scratch: WorldTickScratch): void {
@@ -495,24 +455,10 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
   if (nextChronicle !== state.chronicle) patch.chronicle = nextChronicle;
   if (nextSimLog !== state.simEventLog) patch.simEventLog = nextSimLog;
 
-  // #region agent log
-  const _tS0 = performance.now();
-  // #endregion
   useGameStore.setState(patch);
-  // #region agent log
-  dbgWorld('C', 'worldTicker.ts:setState', 'useGameStore_setState_ms', {
-    ms: Math.round((performance.now() - _tS0) * 100) / 100,
-    wt: newWorldTime,
-    keys: Object.keys(patch).length,
-  });
-  // #endregion
 }
 
 function runWorldTickPipeline(): void {
-  // #region agent log
-  const _tPipe0 = performance.now();
-  dbgWorld('D', 'worldTicker.ts:pipeline', 'runWorldTickPipeline_start', {});
-  // #endregion
   const state = useGameStore.getState();
   if (worldTickBlocked(state)) return;
 
@@ -532,12 +478,6 @@ function runWorldTickPipeline(): void {
       }
       runWorldTickPhaseB(scratch, latest);
       applyWorldTickPatch(scratch);
-      // #region agent log
-      dbgWorld('D', 'worldTicker.ts:pipeline', 'runWorldTickPipeline_inner_done_ms', {
-        msSincePipeStart: Math.round((performance.now() - _tPipe0) * 100) / 100,
-        wt: scratch.newWorldTime,
-      });
-      // #endregion
 
       if (scratch.newWorldTime % 100 === 0 && scratch.state.phase === 'playing') {
         const px = latest.playerX;
@@ -554,9 +494,6 @@ function runWorldTickPipeline(): void {
 }
 
 function onTick(): void {
-  // #region agent log
-  dbgWorld('D', 'worldTicker.ts:onTick', 'setInterval_onTick_fire', { t: Date.now() });
-  // #endregion
   requestAnimationFrame(runWorldTickPipeline);
 }
 

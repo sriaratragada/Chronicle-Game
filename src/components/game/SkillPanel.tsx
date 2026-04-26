@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { PERKS, xpForLevel, SkillTree } from '@/lib/skills';
@@ -5,7 +6,7 @@ import { PERKS, xpForLevel, SkillTree } from '@/lib/skills';
 const SKILL_ICONS: Record<string, string> = { combat: '⚔️', stealth: '🗡️', diplomacy: '🤝', crafting: '🔨' };
 const SKILL_COLORS: Record<string, string> = { combat: 'bg-red-600', stealth: 'bg-purple-600', diplomacy: 'bg-blue-600', crafting: 'bg-amber-600' };
 
-export default function SkillPanel() {
+function SkillPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const skills = useGameStore(s => s.skills);
@@ -65,3 +66,5 @@ export default function SkillPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(SkillPanel);

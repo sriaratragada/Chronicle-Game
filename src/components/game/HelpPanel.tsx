@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 
-export default function HelpPanel() {
+function HelpPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
 
@@ -112,3 +113,5 @@ export default function HelpPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(HelpPanel);

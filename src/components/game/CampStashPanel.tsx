@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { ITEMS } from '@/lib/items';
 
-export default function CampStashPanel() {
+function CampStashPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const campStash = useGameStore(s => s.campStash);
@@ -101,3 +102,5 @@ export default function CampStashPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(CampStashPanel);

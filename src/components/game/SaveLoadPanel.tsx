@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { listSlots, saveToSlot, loadFromSlot, deleteSlot, SaveSlotInfo } from '@/lib/saveSystem';
 
-export default function SaveLoadPanel() {
+function SaveLoadPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const phase = useGameStore(s => s.phase);
@@ -91,3 +91,5 @@ export default function SaveLoadPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(SaveLoadPanel);

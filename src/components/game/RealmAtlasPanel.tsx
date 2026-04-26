@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import {
@@ -235,7 +235,7 @@ function worldToScreen(
   return [dw / 2 + (wx - camX) * ppw, dh / 2 + (wy - camY) * ppw];
 }
 
-export default function RealmAtlasPanel() {
+function RealmAtlasPanel() {
   const overlay = useGameStore(s => s.overlay);
   const phase = useGameStore(s => s.phase);
   const setOverlay = useGameStore(s => s.setOverlay);
@@ -473,3 +473,5 @@ export default function RealmAtlasPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(RealmAtlasPanel);

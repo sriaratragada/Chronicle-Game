@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { PLOT_PRICES } from '@/lib/housing';
 
-export default function BuildPanel() {
+function BuildPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const currentLocation = useGameStore(s => s.currentLocation);
@@ -57,3 +58,5 @@ export default function BuildPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(BuildPanel);

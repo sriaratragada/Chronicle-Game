@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { ITEMS } from '@/lib/items';
 import { computeTradeLeads } from '@/lib/marketIntelligence';
 
-export default function ShopPanel() {
+function ShopPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const currentLocation = useGameStore(s => s.currentLocation);
@@ -134,3 +134,5 @@ export default function ShopPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(ShopPanel);

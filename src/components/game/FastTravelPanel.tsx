@@ -1,9 +1,10 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { LOCATIONS } from '@/lib/gameData';
 import { LOCATION_COORDS } from '@/lib/mapGenerator';
 
-export default function FastTravelPanel() {
+function FastTravelPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const visitedLocations = useGameStore(s => s.visitedLocations);
@@ -52,3 +53,5 @@ export default function FastTravelPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(FastTravelPanel);

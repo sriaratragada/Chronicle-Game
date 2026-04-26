@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { KINGDOM_LORE } from '@/lib/worldLore';
 
 const FACTION_COLORS: Record<string, string> = { auredia_crown: '#c9a84c', korrath: '#8a4444', vell: '#4488aa', sarnak: '#7a6a3a' };
 
-export default function FactionPanel() {
+function FactionPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const factionStates = useGameStore(s => s.factionStates);
@@ -49,3 +50,5 @@ export default function FactionPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(FactionPanel);

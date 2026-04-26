@@ -17,6 +17,22 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
+    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+  },
+  build: {
+    target: "es2020",
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          "motion": ["framer-motion"],
+          "game-data": [
+            "./src/lib/mapGenerator",
+            "./src/lib/gameData",
+            "./src/lib/settlementLayout",
+          ],
+        },
+      },
+    },
   },
 }));

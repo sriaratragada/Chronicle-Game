@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { RECIPES } from '@/lib/recipes';
@@ -6,7 +6,7 @@ import { ITEMS } from '@/lib/items';
 import { canCraft, countItem } from '@/lib/craftingSystem';
 import { getEntitiesNear } from '@/lib/worldEntities';
 
-export default function CraftingPanel() {
+function CraftingPanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const inventory = useGameStore(s => s.inventory);
@@ -65,3 +65,5 @@ export default function CraftingPanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(CraftingPanel);

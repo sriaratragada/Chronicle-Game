@@ -1,9 +1,10 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { SPELL_LIST } from '@/lib/arcaneSystem';
 import { useShallow } from 'zustand/react/shallow';
 
-export default function ArcanePanel() {
+function ArcanePanel() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const castSpellAction = useGameStore(s => s.castSpellAction);
@@ -157,3 +158,5 @@ export default function ArcanePanel() {
     </AnimatePresence>
   );
 }
+
+export default memo(ArcanePanel);

@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 
-export default function QuestLog() {
+function QuestLog() {
   const overlay = useGameStore(s => s.overlay);
   const setOverlay = useGameStore(s => s.setOverlay);
   const quests = useGameStore(s => s.quests);
@@ -86,3 +87,5 @@ export default function QuestLog() {
     </AnimatePresence>
   );
 }
+
+export default memo(QuestLog);

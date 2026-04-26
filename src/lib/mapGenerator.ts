@@ -20,6 +20,7 @@ export function setSeed(s: number) {
   SEED = s;
   chunkCache.clear();
   _roadSet = null;
+  _riverSet = null;
   invalidateSettlementRoadCache();
   invalidateWildernessCaches();
   invalidateHamletCache();
@@ -417,8 +418,12 @@ function applySettlementInfluence(x: number, y: number, base: number, nearSettle
 }
 
 // ── River check (deterministic per-tile) ───────────────────────────────────
-function isRiver(x: number, y: number): boolean {
-  // Several major rivers per continent, computed deterministically
+// Pre-baked Set of all river tile keys (y * MAP_W + x). Built once; O(1) lookup.
+let _riverSet: Set<number> | null = null;
+
+export function ensureRivers(): Set<number> {
+  if (_riverSet) return _riverSet;
+  _riverSet = new Set<number>();
   for (const c of CONTINENTS) {
     const numRivers = c.id === 'uloren' ? 3 : 5;
     for (let i = 0; i < numRivers; i++) {
@@ -426,7 +431,15 @@ function isRiver(x: number, y: number): boolean {
       const seedY = hash(i * 13, c.cy + i) * c.ry * 2 + (c.cy - c.ry);
       let rx = seedX, ry = seedY;
       for (let step = 0; step < 2000; step++) {
-        if (Math.abs(rx - x) < 2 && Math.abs(ry - y) < 2) return true;
+        // Mark ±2 footprint to match original abs < 2 check
+        const bx = Math.floor(rx), by = Math.floor(ry);
+        for (let dy = -1; dy <= 2; dy++) {
+          for (let dx = -1; dx <= 2; dx++) {
+            const tx = bx + dx, ty = by + dy;
+            if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H)
+              _riverSet.add(ty * MAP_W + tx);
+          }
+        }
         const drift = hash(Math.floor(rx) + step * 29, Math.floor(ry) + step * 19);
         rx += (drift < 0.4 ? -1 : drift > 0.6 ? 1 : 0);
         ry += 1;
@@ -434,7 +447,11 @@ function isRiver(x: number, y: number): boolean {
       }
     }
   }
-  return false;
+  return _riverSet;
+}
+
+function isRiver(x: number, y: number): boolean {
+  return ensureRivers().has(y * MAP_W + x);
 }
 
 // ── Farm field check ───────────────────────────────────────────────────────

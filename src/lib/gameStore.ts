@@ -15,7 +15,7 @@ import {
 import { createWeatherState } from './weatherSystem';
 import { startTicker } from './worldTicker';
 import { INITIAL_NPCS, generateEvents, getWorldEvent, getPlayerTitle, ENVIRONMENT_ACTIONS, FOOD_VALUES, LOCATIONS } from './gameData';
-import { LOCATION_COORDS, isWalkableCode, getTileAt, MAP_W, MAP_H, TILE_NAMES, getContinentAt, getSettlementMeta, setSeed, ensureRoads } from './mapGenerator';
+import { LOCATION_COORDS, isWalkableCode, getTileAt, MAP_W, MAP_H, TILE_NAMES, getContinentAt, getSettlementMeta, setSeed, ensureRoads, ensureRivers } from './mapGenerator';
 import { getExtendedLocationCoords, getHamlets, isHamletId } from './hamlets';
 import { warmSettlementRoadIndexes } from './settlementLayout';
 import { initWorldEntities, getEntitiesNear, spawnEntity, removeEntity, getEntityById, type WorldEntity } from './worldEntities';
@@ -185,10 +185,11 @@ function scheduleAfterPaint(fn: () => void): void {
   }
 }
 
-/** Seed, global roads, settlement-road union, hamlet list — run in first boot rAF slice. */
+/** Seed, global roads, rivers, settlement-road union, hamlet list — run in first boot rAF slice. */
 function bootstrapWorldGeometry(): void {
   setSeed(42);
   ensureRoads();
+  ensureRivers();
   warmSettlementRoadIndexes();
   void getHamlets();
 }

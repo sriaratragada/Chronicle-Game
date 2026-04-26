@@ -20,6 +20,7 @@ export interface Quest {
   steps: QuestStep[];
   rewards: { gold?: number; xp?: number; itemId?: string; itemQty?: number; reputation?: Record<string, number> };
   state: 'active' | 'completed' | 'failed';
+  chainNextId?: string;
 }
 
 export function createQuest(id: string, title: string, description: string, giverLocation: string, steps: QuestStep[], rewards: Quest['rewards']): Quest {
@@ -70,6 +71,10 @@ export function generateBountyQuest(
     ],
     { gold: reward, xp: 50 },
   );
+}
+
+export function createChainedQuest(prev: Quest, next: Quest): Quest {
+  return { ...prev, chainNextId: next.id };
 }
 
 export function generateFetchQuest(itemName: string, itemId: string, qty: number, giverLocation: string, reward: number): Quest {

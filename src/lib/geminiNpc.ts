@@ -24,6 +24,14 @@ interface NpcContext {
   worldEvents: string[];
   /** Overworld tile and time-of-day hint for grounded dialogue. */
   tileSummary?: string;
+  /** Current NPC goals (top 2) for goal-aware responses. */
+  npcGoals?: string[];
+  /** Top NPC relationships for relationship-aware responses. */
+  npcRelationships?: string[];
+  /** Faction the NPC belongs to. */
+  factionAllegiance?: string;
+  /** Recent world crisis summary. */
+  recentWorldCrisis?: string;
 }
 
 interface DialogueResponse {
@@ -72,11 +80,15 @@ async function callGemini(prompt: string, cacheKey?: string): Promise<string | n
 }
 
 function buildDialoguePrompt(ctx: NpcContext): string {
+  const goalLine = ctx.npcGoals?.length ? `\nYour current preoccupation: ${ctx.npcGoals.slice(0, 2).join('; ')}` : '';
+  const relLine = ctx.npcRelationships?.length ? `\nYour notable relationships: ${ctx.npcRelationships.join(', ')}` : '';
+  const factionLine = ctx.factionAllegiance ? `\nFaction allegiance: ${ctx.factionAllegiance}` : '';
+  const crisisLine = ctx.recentWorldCrisis ? `\nCurrent crisis in the realm: ${ctx.recentWorldCrisis}` : '';
   return `You are ${ctx.npcName}, a ${ctx.npcJob} in the medieval fantasy settlement of ${ctx.location} on the continent of ${ctx.continent}.
 
 Personality: ${ctx.npcPersonality}
 Current disposition toward the player: ${ctx.npcDisposition > 10 ? 'friendly' : ctx.npcDisposition < -10 ? 'hostile' : 'neutral'} (${ctx.npcDisposition}/100)
-Season: ${ctx.season}, Weather: ${ctx.weather}, Time: ${ctx.dayPhase}
+Season: ${ctx.season}, Weather: ${ctx.weather}, Time: ${ctx.dayPhase}${factionLine}${goalLine}${relLine}${crisisLine}
 
 Your memories of the player: ${ctx.npcMemories.length > 0 ? ctx.npcMemories.join('; ') : 'None — first meeting'}
 
@@ -95,7 +107,9 @@ OPTION3: [option text]`;
 
 export async function generateNpcDialogue(ctx: NpcContext): Promise<DialogueResponse | null> {
   const prompt = buildDialoguePrompt(ctx);
-  const cacheKey = `dialogue_${ctx.npcName}_${ctx.location}_${Math.floor(Date.now() / 30000)}`;
+  const dispBucket = ctx.npcDisposition > 50 ? 'hi' : ctx.npcDisposition < -20 ? 'lo' : 'mid';
+  const goalBucket = ctx.npcGoals?.[0]?.slice(0, 20) ?? '';
+  const cacheKey = `dlg_${ctx.npcName}_${ctx.dayPhase}_${dispBucket}_${goalBucket}_${Math.floor(Date.now() / 30000)}`;
   const raw = await callGemini(prompt, cacheKey);
   if (!raw) return null;
 

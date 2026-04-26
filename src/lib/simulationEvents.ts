@@ -303,6 +303,66 @@ export function createEscortPaySimEvent(args: {
   };
 }
 
+export function createFactionWarEvent(args: {
+  worldTime: number; gameTick: number; season: Season;
+  attackerId: string; attackerName: string; targetId: string; targetName: string;
+  idIndex: { n: number };
+}): SimEvent {
+  const id = makeSimEventId(args.worldTime, args.gameTick, args.idIndex.n++);
+  return {
+    schemaVersion: SIM_SCHEMA_VERSION,
+    id,
+    worldTime: args.worldTime,
+    gameTick: args.gameTick,
+    season: args.season,
+    source: 'world_tick',
+    category: 'faction',
+    summary: `${args.attackerName} has declared war on ${args.targetName}. The realm trembles.`,
+    deltas: [{ domain: 'faction', key: 'atWar', factionId: args.attackerId }],
+    visibility: 'chronicle',
+  };
+}
+
+export function createFactionPeaceEvent(args: {
+  worldTime: number; gameTick: number; season: Season;
+  seekerId: string; seekerName: string; targetName: string;
+  idIndex: { n: number };
+}): SimEvent {
+  const id = makeSimEventId(args.worldTime, args.gameTick, args.idIndex.n++);
+  return {
+    schemaVersion: SIM_SCHEMA_VERSION,
+    id,
+    worldTime: args.worldTime,
+    gameTick: args.gameTick,
+    season: args.season,
+    source: 'world_tick',
+    category: 'faction',
+    summary: `${args.seekerName} has brokered peace with ${args.targetName}. The drums of war grow quiet.`,
+    deltas: [{ domain: 'faction', key: 'atPeace', factionId: args.seekerId }],
+    visibility: 'chronicle',
+  };
+}
+
+export function createFactionConquestEvent(args: {
+  worldTime: number; gameTick: number; season: Season;
+  winnerId: string; winnerName: string; loserId: string; loserName: string; locationId: string;
+  idIndex: { n: number };
+}): SimEvent {
+  const id = makeSimEventId(args.worldTime, args.gameTick, args.idIndex.n++);
+  return {
+    schemaVersion: SIM_SCHEMA_VERSION,
+    id,
+    worldTime: args.worldTime,
+    gameTick: args.gameTick,
+    season: args.season,
+    source: 'world_tick',
+    category: 'faction',
+    summary: `${args.winnerName} has seized ${args.locationId} from ${args.loserName}. The banner changes over the gate.`,
+    deltas: [{ domain: 'faction', key: 'territory', factionId: args.winnerId, locationId: args.locationId }],
+    visibility: 'chronicle',
+  };
+}
+
 export function recordPlayerShopBuy(args: {
   worldTime: number;
   gameTick: number;

@@ -8,6 +8,7 @@ import type { BountyBoard } from './bountyBoard';
 import type { FogMap } from './fogOfWar';
 import type { Housing } from './housing';
 import type { DialogueTree } from './dialogue';
+import type { MarketSnapshot } from './marketIntelligence';
 
 export type ReputationKey = 'conquest' | 'trade' | 'craft' | 'diplomacy' | 'exploration' | 'arcane';
 
@@ -337,6 +338,13 @@ export interface GameState {
   maxMana: number;
   knownSpells: string[];
   spellCooldowns: Record<string, number>;
+
+  /** Dynamic quest synthesis cooldowns (keyed by template id) */
+  synthesisCooldowns: Record<string, number>;
+  /** Recent market snapshots for trade lead computation */
+  marketSnapshots: MarketSnapshot[];
+  /** worldTime when the last chronicle arc event fired */
+  lastArcTick: number;
 
   /** When New Game bootstrap throws, message is set here and `phase` returns to title. */
   bootError: string | null;

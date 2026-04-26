@@ -1,4 +1,5 @@
 import type { DayNightPhase } from './gameTypes';
+import type { NpcGoal } from './goalSystem';
 
 export type NpcJob = 'farmer' | 'merchant' | 'guard' | 'innkeeper' | 'smith' | 'priest' | 'sellsword' | 'bandit' | 'noble';
 
@@ -12,6 +13,7 @@ export interface SimNpc {
   y: number;
   disposition: number;
   schedule: NpcScheduleEntry[];
+  goals: NpcGoal[];
 }
 
 export interface NpcScheduleEntry {
@@ -37,26 +39,49 @@ export function createSimNpc(id: string, name: string, job: NpcJob, location: st
     id, name, job, homeLocation: location, currentLocation: location, x, y,
     disposition: 0,
     schedule: DEFAULT_SCHEDULES[job] ?? DEFAULT_SCHEDULES.farmer,
+    goals: [],
   };
 }
 
 export function tickNpc(npc: SimNpc, dayPhase: DayNightPhase): SimNpc {
-  const entry = npc.schedule.find(s => s.phase === dayPhase) ?? npc.schedule[0];
   const next = { ...npc };
 
-  switch (entry.action) {
-    case 'wander': {
-      // Small random movement around current position
+  // Goal-driven behavior takes priority over schedule
+  const topGoal = npc.goals[0];
+  if (topGoal) {
+    switch (topGoal.type) {
+      case 'flee':
+        next.x += Math.floor(Math.random() * 5) - 2;
+        next.y += Math.floor(Math.random() * 5) - 2;
+        if (topGoal.targetLocation) next.currentLocation = topGoal.targetLocation;
+        return next;
+      case 'travel':
+        if (topGoal.targetLocation) next.currentLocation = topGoal.targetLocation;
+        return next;
+      case 'patrol':
+        next.x += Math.floor(Math.random() * 5) - 2;
+        next.y += Math.floor(Math.random() * 5) - 2;
+        return next;
+      case 'wander':
+      case 'socialize':
+        next.x += Math.floor(Math.random() * 3) - 1;
+        next.y += Math.floor(Math.random() * 3) - 1;
+        return next;
+      default:
+        break;
+    }
+  }
+
+  // Fallback to schedule
+  const entry = npc.schedule.find(s => s.phase === dayPhase) ?? npc.schedule[0];
+  switch (entry?.action) {
+    case 'wander':
       next.x += Math.floor(Math.random() * 5) - 2;
       next.y += Math.floor(Math.random() * 5) - 2;
       break;
-    }
-    case 'travel': {
-      if (entry.targetLocation) {
-        next.currentLocation = entry.targetLocation;
-      }
+    case 'travel':
+      if (entry.targetLocation) next.currentLocation = entry.targetLocation;
       break;
-    }
     default:
       break;
   }

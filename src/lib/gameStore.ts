@@ -38,6 +38,7 @@ import { rollFishingLoot } from './fishingLoot';
 import { appendSimEvents, recordPlayerShopBuy, recordPlayerShopSell, simEventsToChronicleEntries, SIM_EVENT_CAP } from './simulationEvents';
 import { evaluateMilestones, MILESTONES } from './progressionRegistry';
 import { SPELLS } from './arcaneSystem';
+import { updateEdge } from './relationshipGraph';
 import { toast } from 'sonner';
 
 const SEASON_ORDER: Season[] = ['thaw', 'summer', 'harvest', 'dark'];
@@ -271,6 +272,9 @@ function buildFreshPlayingStatePayload(): Partial<GameState> & { phase: 'playing
     maxMana: 30,
     knownSpells: [],
     spellCooldowns: {},
+    synthesisCooldowns: {},
+    marketSnapshots: [],
+    lastArcTick: 0,
   };
 }
 
@@ -680,6 +684,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (choice.npcEffects) choice.npcEffects.forEach(effect => {
       const npc = newNpcs.find(n => n.id === effect.npcId);
       if (npc) { npc.disposition = Math.min(100, Math.max(-100, npc.disposition + effect.disposition)); npc.memories.push({ event: effect.memory, tick: state.tick, sentiment: effect.disposition > 0 ? 'positive' : effect.disposition < 0 ? 'negative' : 'neutral' }); }
+      updateEdge('player', effect.npcId, effect.disposition, effect.memory, state.worldTime);
     });
     set({
       reputation: newRep, factions: newFactions, npcs: newNpcs,
@@ -1560,6 +1565,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (npc && npc.faction !== 'none' && npc.faction in state.factions) {
       newFactions = { ...state.factions, [npc.faction]: Math.min(100, (state.factions[npc.faction as keyof FactionStanding] ?? 0) + 1) };
     }
+
+    updateEdge('player', npcId, dispGain, `Received ${def.name} as a gift from the traveler.`, state.worldTime);
 
     const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler gifted ${def.name} to ${npc?.name ?? 'a stranger'}. (+${dispGain} disposition)`, type: 'npc' };
     const ms = applyMilestoneCheck({ ...state, inventory: newInv, npcs: newNpcs, factions: newFactions, minorNpcState: newMinor });

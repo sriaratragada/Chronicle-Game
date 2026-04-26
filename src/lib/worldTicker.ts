@@ -2,7 +2,7 @@ import { useGameStore } from './gameStore';
 import { tickWeather } from './weatherSystem';
 import { getDayNightPhase, TICKS_PER_DAY } from './timeSystem';
 import { tickMarket, applyCaravanDelivery } from './economySystem';
-import { tickFaction } from './factionSystem';
+import { tickFaction, declareWar, makePeace } from './factionSystem';
 import { refreshBountyBoard } from './bountyBoard';
 import {
   getEntitiesNear,
@@ -25,8 +25,14 @@ import {
   buildWorldTickSimEvents,
   createEscortPaySimEvent,
   simEventsToChronicleEntries,
+  createFactionWarEvent,
+  createFactionPeaceEvent,
   SIM_EVENT_CAP,
 } from './simulationEvents';
+import { evaluateAllFactionStrategies, applyFactionStrategyActions } from './factionAgent';
+import { snapshotMarkets, appendSnapshot } from './marketIntelligence';
+import { synthesizeQuests, evaluateArcs } from './narrativeDirector';
+import { decayRelationships } from './relationshipGraph';
 
 const CHRONICLE_CAP = 400;
 
@@ -90,6 +96,9 @@ interface WorldTickScratch {
   escortId: string | null;
   newGold: number;
   newMana: number;
+  newSynthesisCooldowns: GameState['synthesisCooldowns'];
+  newMarketSnapshots: GameState['marketSnapshots'];
+  newLastArcTick: number;
   /** Player / caravan sim events emitted during phase B (e.g. escort pay). */
   extraSimEvents: SimEvent[];
   simIdIndex: { n: number };
@@ -176,6 +185,90 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
 
   const newMana = Math.min(state.maxMana ?? 30, (state.mana ?? 0) + 2);
 
+  // Faction strategy agents every 24 ticks
+  let newFactionStatesWithStrategy = newFactionStates;
+  const factionStrategyEvents: SimEvent[] = [];
+  if (newWorldTime % 24 === 0) {
+    const allActions = evaluateAllFactionStrategies(newFactionStatesWithStrategy, newRegional, newWorldTime);
+    if (allActions.length > 0) {
+      const { factions: updatedFactions, events } = applyFactionStrategyActions(
+        newFactionStatesWithStrategy,
+        allActions,
+        { declareWar, makePeace, captureTerritory: (f, w, l, loc) => {
+          const wf = f[w];
+          const lf = f[l];
+          if (!wf || !lf) return f;
+          return {
+            ...f,
+            [w]: { ...wf, territory: [...wf.territory, loc] },
+            [l]: { ...lf, territory: lf.territory.filter(t => t !== loc) },
+          };
+        } },
+      );
+      newFactionStatesWithStrategy = updatedFactions;
+      const idxRef = { n: 900 };
+      for (const ev of events) {
+        if (ev.type === 'war') {
+          const attFac = newFactionStates[ev.attacker];
+          const tgtFac = newFactionStates[ev.target];
+          if (attFac && tgtFac) {
+            factionStrategyEvents.push(createFactionWarEvent({
+              worldTime: newWorldTime, gameTick: state.tick, season: state.season,
+              attackerId: ev.attacker, attackerName: attFac.name,
+              targetId: ev.target, targetName: tgtFac.name,
+              idIndex: idxRef,
+            }));
+          }
+        } else if (ev.type === 'peace') {
+          const seekFac = newFactionStates[ev.attacker];
+          const tgtFac = newFactionStates[ev.target];
+          if (seekFac && tgtFac) {
+            factionStrategyEvents.push(createFactionPeaceEvent({
+              worldTime: newWorldTime, gameTick: state.tick, season: state.season,
+              seekerId: ev.attacker, seekerName: seekFac.name, targetName: tgtFac.name,
+              idIndex: idxRef,
+            }));
+          }
+        }
+      }
+      newFactionStates = newFactionStatesWithStrategy;
+    }
+  }
+
+  // Market snapshots every 40 ticks
+  let newMarketSnapshots = state.marketSnapshots ?? [];
+  if (newWorldTime % 40 === 0) {
+    const fresh = snapshotMarkets(newMarkets, newWorldTime);
+    newMarketSnapshots = appendSnapshot(newMarketSnapshots, fresh);
+  }
+
+  // Quest synthesis every 30 ticks
+  let newSynthesisCooldowns = state.synthesisCooldowns ?? {};
+  let newQuestsFinal = newQuests;
+  if (newWorldTime % 30 === 0) {
+    const { quests: synthesized, newCooldowns } = synthesizeQuests(state, newSynthesisCooldowns);
+    if (synthesized.length > 0) {
+      newQuestsFinal = [...newQuests, ...synthesized];
+      newSynthesisCooldowns = newCooldowns;
+    }
+  }
+  newQuests = newQuestsFinal;
+
+  // Chronicle arc detection every 20 ticks
+  let newLastArcTick = state.lastArcTick ?? 0;
+  if (newWorldTime % 20 === 0 && newWorldTime - newLastArcTick >= 20) {
+    const arcEvent = evaluateArcs(state);
+    if (arcEvent) {
+      newLastArcTick = newWorldTime;
+      extraChronicle.push({ tick: state.tick, season: state.season, text: `[Arc] ${arcEvent.title}: ${arcEvent.narrative.slice(0, 120)}`, type: 'world' });
+    }
+  }
+
+  // Relationship decay every 50 ticks
+  if (newWorldTime % 50 === 0) {
+    decayRelationships(newWorldTime);
+  }
+
   let escortId = state.escortCaravanId;
   if (escortId && !getEntityById(escortId)) escortId = null;
 
@@ -208,7 +301,10 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
     escortId,
     newGold: state.gold,
     newMana,
-    extraSimEvents: [],
+    newSynthesisCooldowns,
+    newMarketSnapshots,
+    newLastArcTick,
+    extraSimEvents: [...factionStrategyEvents],
     simIdIndex: { n: 0 },
   };
 }
@@ -349,6 +445,9 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
     newQuests,
     escortId,
     newGold,
+    newSynthesisCooldowns,
+    newMarketSnapshots,
+    newLastArcTick,
     extraSimEvents,
     simIdIndex,
   } = scratch;
@@ -384,6 +483,9 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
     gold: newGold,
     escortCaravanId: escortId,
     mana: scratch.newMana,
+    synthesisCooldowns: newSynthesisCooldowns,
+    marketSnapshots: newMarketSnapshots,
+    lastArcTick: newLastArcTick,
   };
   if (newWeather !== state.weather) patch.weather = newWeather;
   if (newMarkets !== state.markets) patch.markets = newMarkets;

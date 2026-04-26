@@ -1,5 +1,6 @@
 import { useGameStore } from './gameStore';
 import { serializeEntities, deserializeEntities } from './worldEntities';
+import { serializeGraph, deserializeGraph } from './relationshipGraph';
 
 const SAVE_KEY_PREFIX = 'chronicle_save_slot_';
 const MAX_SLOTS = 4;
@@ -60,6 +61,7 @@ export function saveToSlot(slot: number) {
       clearBootError: undefined, giftNpc: undefined, castSpellAction: undefined,
     },
     entities: entityJson,
+    relationshipGraph: serializeGraph(),
   };
   localStorage.setItem(SAVE_KEY_PREFIX + slot, JSON.stringify(data));
 }
@@ -75,6 +77,7 @@ export function loadFromSlot(slot: number): boolean {
 
     // Restore entities
     if (data.entities) deserializeEntities(data.entities);
+    if (data.relationshipGraph) deserializeGraph(data.relationshipGraph);
 
     // Restore store state (strip undefined function keys)
     const clean: Record<string, unknown> = {};
@@ -92,6 +95,9 @@ export function loadFromSlot(slot: number): boolean {
     if (typeof clean.maxMana !== 'number') clean.maxMana = 30;
     if (!Array.isArray(clean.knownSpells)) clean.knownSpells = [];
     if (!clean.spellCooldowns || typeof clean.spellCooldowns !== 'object') clean.spellCooldowns = {};
+    if (!clean.synthesisCooldowns || typeof clean.synthesisCooldowns !== 'object') clean.synthesisCooldowns = {};
+    if (!Array.isArray(clean.marketSnapshots)) clean.marketSnapshots = [];
+    if (typeof clean.lastArcTick !== 'number') clean.lastArcTick = 0;
     useGameStore.setState(clean as any);
     return true;
   } catch {

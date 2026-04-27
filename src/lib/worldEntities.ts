@@ -330,6 +330,30 @@ export function initWorldEntities() {
     spawnEntity('cave_entrance', x, y, { explored: false, biome: 'mountain', guaranteed: true }, 1);
   }
 
+  // Starter wildlife near Ashenford so the player sees animals immediately
+  const startHome = LOCATION_COORDS['ashenford'];
+  if (startHome) {
+    const nearSpecs: { kind: EntityKind; hp: number; max: number }[] = [
+      { kind: 'deer',   hp: 20, max: 3 },
+      { kind: 'sheep',  hp: 15, max: 3 },
+      { kind: 'rabbit', hp: 8,  max: 2 },
+    ];
+    for (const ns of nearSpecs) {
+      let placed = 0;
+      for (let a = 0; a < 120 && placed < ns.max; a++) {
+        const ang = hash(ns.kind.charCodeAt(0) * 31 + a, 7700 + a) * Math.PI * 2;
+        const rad = 80 + hash(a, 7701 + placed) * 120;
+        const x = Math.round(startHome.x + Math.cos(ang) * rad);
+        const y = Math.round(startHome.y + Math.sin(ang) * rad);
+        if (x < 0 || x >= MAP_W || y < 0 || y >= MAP_H) continue;
+        const tn = tileCodeToType(getTileAt(x, y));
+        if (['deep_water', 'water', 'mountain', 'snow'].includes(tn)) continue;
+        spawnEntity(ns.kind, x, y, { behavior: 'grazing', starter: true }, ns.hp);
+        placed++;
+      }
+    }
+  }
+
   // Starter resources near Ashenford
   const home = LOCATION_COORDS.ashenford;
   if (home) {

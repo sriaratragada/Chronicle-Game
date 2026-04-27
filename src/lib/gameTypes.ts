@@ -348,4 +348,7 @@ export interface GameState {
 
   /** When New Game bootstrap throws, message is set here and `phase` returns to title. */
   bootError: string | null;
+
+  /** True on first new game — triggers cinematic tutorial overlay. */
+  showTutorial: boolean;
 }

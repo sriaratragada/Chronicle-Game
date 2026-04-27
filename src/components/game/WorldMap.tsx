@@ -172,63 +172,129 @@ function drawObject(ctx: CanvasRenderingContext2D, obj: WorldObject, sx: number,
       break;
     }
     case 'poi_lakeshore': {
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.arc(0, 0, z * 0.9, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(200,220,255,0.5)';
-      ctx.lineWidth = z * 0.12;
-      ctx.stroke();
+      // Water shimmer glow
+      const lg = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 3.0);
+      lg.addColorStop(0, 'rgba(80,150,200,0.25)'); lg.addColorStop(1, 'rgba(60,120,180,0)');
+      ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(0, 0, z * 3.0, 0, Math.PI * 2); ctx.fill();
+      // Dock posts
+      ctx.fillStyle = '#6a4a28';
+      for (let p = -1; p <= 1; p++) { ctx.fillRect(p * z * 1.0 - z * 0.15, z * 0.0, z * 0.3, z * 1.4); }
+      // Planks
+      ctx.fillStyle = '#8a6a40'; ctx.fillRect(-z * 1.3, z * 0.0, z * 2.6, z * 0.35);
+      // Ripple
+      const rph = time * 0.0015;
+      ctx.strokeStyle = 'rgba(120,180,220,0.4)'; ctx.lineWidth = z * 0.12;
+      ctx.beginPath(); ctx.ellipse(0, z * 1.8, z * (1.4 + Math.sin(rph) * 0.3), z * 0.4, 0, 0, Math.PI * 2); ctx.stroke();
       break;
     }
     case 'poi_chapel': {
-      ctx.fillStyle = col;
-      ctx.fillRect(-z * 0.8, -z * 1.6, z * 1.6, z * 1.8);
-      ctx.beginPath();
-      ctx.moveTo(-z * 1.0, -z * 1.6);
-      ctx.lineTo(0, -z * 2.4);
-      ctx.lineTo(z * 1.0, -z * 1.6);
-      ctx.closePath();
-      ctx.fill();
+      // Lavender glow
+      const chapGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 3.5);
+      chapGlow.addColorStop(0, 'rgba(200,190,255,0.18)'); chapGlow.addColorStop(1, 'rgba(200,190,255,0)');
+      ctx.fillStyle = chapGlow; ctx.beginPath(); ctx.arc(0, 0, z * 3.5, 0, Math.PI * 2); ctx.fill();
+      // Stone walls
+      ctx.fillStyle = '#9a9098'; ctx.fillRect(-z * 1.3, -z * 1.5, z * 2.6, z * 2.4);
+      // Arched window
+      ctx.fillStyle = 'rgba(200,190,255,0.45)';
+      ctx.beginPath(); ctx.arc(0, -z * 0.5, z * 0.55, Math.PI, 0); ctx.fill();
+      ctx.fillRect(-z * 0.55, -z * 0.5, z * 1.1, z * 0.7);
+      // Pitched roof
+      ctx.fillStyle = '#6a5a78';
+      ctx.beginPath(); ctx.moveTo(-z * 1.5, -z * 1.5); ctx.lineTo(0, -z * 2.8); ctx.lineTo(z * 1.5, -z * 1.5); ctx.closePath(); ctx.fill();
+      // Cross
+      ctx.fillStyle = '#e8daf8';
+      ctx.fillRect(-z * 0.12, -z * 3.6, z * 0.24, z * 1.0);
+      ctx.fillRect(-z * 0.45, -z * 3.35, z * 0.9, z * 0.22);
       break;
     }
     case 'poi_knight_camp': {
-      ctx.fillStyle = col;
-      ctx.fillRect(-z * 1.2, z * 0.2, z * 2.4, z * 0.35);
-      ctx.strokeStyle = '#c8a060';
-      ctx.lineWidth = z * 0.15;
-      ctx.beginPath();
-      ctx.arc(0, -z * 0.4, z * 0.9, 0, Math.PI * 2);
-      ctx.stroke();
+      // Campfire glow
+      const kcFlicker = 0.8 + Math.sin(time * 0.004 + obj.variant) * 0.2;
+      const kcFg = ctx.createRadialGradient(0, z * 0.8, 0, 0, z * 0.8, z * 2.5 * kcFlicker);
+      kcFg.addColorStop(0, 'rgba(255,160,40,0.45)'); kcFg.addColorStop(1, 'rgba(255,100,10,0)');
+      ctx.fillStyle = kcFg; ctx.beginPath(); ctx.arc(0, z * 0.8, z * 2.5, 0, Math.PI * 2); ctx.fill();
+      // Tent body
+      ctx.fillStyle = '#8a6a40';
+      ctx.beginPath(); ctx.moveTo(-z * 1.8, z * 1.0); ctx.lineTo(0, -z * 1.8); ctx.lineTo(z * 1.8, z * 1.0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#6a4a28'; ctx.fillRect(-z * 0.25, -z * 0.5, z * 0.5, z * 1.5);
+      // Banner
+      ctx.fillStyle = '#c84040'; ctx.fillRect(-z * 0.25, -z * 2.2, z * 0.22, z * 0.55);
+      // Campfire
+      ctx.fillStyle = '#4a3010'; ctx.beginPath(); ctx.arc(0, z * 1.2, z * 0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(255,${140 + Math.floor(Math.sin(time * 0.007) * 40)},30,0.9)`;
+      ctx.beginPath(); ctx.arc(0, z * 0.85, z * 0.28 * kcFlicker, 0, Math.PI * 2); ctx.fill();
       break;
     }
     case 'poi_wrecked_cart': {
-      ctx.fillStyle = col;
-      ctx.fillRect(-z * 1.4, -z * 0.2, z * 2.8, z * 0.6);
-      ctx.fillStyle = '#3a3028';
-      ctx.fillRect(-z * 0.3, -z * 0.9, z * 0.6, z * 0.5);
+      ctx.save(); ctx.rotate(0.3);
+      ctx.fillStyle = '#7a5030'; ctx.fillRect(-z * 1.4, -z * 0.45, z * 2.8, z * 0.75);
+      // Broken wheel partial arc
+      ctx.strokeStyle = '#5a3818'; ctx.lineWidth = z * 0.28;
+      ctx.beginPath(); ctx.arc(z * 0.9, z * 0.7, z * 0.85, 0.4, Math.PI * 1.9); ctx.stroke();
+      for (let s = 0; s < 4; s++) {
+        const wa = 0.4 + (s / 4) * Math.PI * 1.5;
+        ctx.beginPath(); ctx.moveTo(z * 0.9, z * 0.7); ctx.lineTo(z * 0.9 + Math.cos(wa) * z * 0.85, z * 0.7 + Math.sin(wa) * z * 0.85); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.fillStyle = '#b89060'; ctx.beginPath(); ctx.ellipse(-z * 0.8, z * 0.3, z * 0.8, z * 0.5, -0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d4aa70'; ctx.beginPath(); ctx.ellipse(-z * 0.8, z * 0.1, z * 0.35, z * 0.25, -0.4, 0, Math.PI * 2); ctx.fill();
       break;
     }
     case 'poi_standing_stone': {
-      ctx.fillStyle = col;
-      ctx.fillRect(-z * 0.35, -z * 2.2, z * 0.7, z * 2.5);
+      // Ancient green glow
+      const ssGlow = ctx.createRadialGradient(0, -z * 1.5, 0, 0, -z * 1.5, z * 2.8);
+      ssGlow.addColorStop(0, 'rgba(140,200,160,0.22)'); ssGlow.addColorStop(1, 'rgba(140,200,160,0)');
+      ctx.fillStyle = ssGlow; ctx.beginPath(); ctx.arc(0, -z * 1.5, z * 2.8, 0, Math.PI * 2); ctx.fill();
+      // Base stones
+      ctx.fillStyle = '#7a7870'; ctx.fillRect(-z * 1.0, z * 0.3, z * 2.0, z * 0.5);
+      // Main monolith
+      ctx.fillStyle = '#9a9890';
+      ctx.beginPath(); ctx.moveTo(-z * 0.6, z * 0.3); ctx.lineTo(-z * 0.45, -z * 3.0); ctx.lineTo(z * 0.45, -z * 3.0); ctx.lineTo(z * 0.6, z * 0.3); ctx.closePath(); ctx.fill();
+      // Carved rune
+      ctx.strokeStyle = 'rgba(140,220,160,0.7)'; ctx.lineWidth = z * 0.13;
+      ctx.beginPath(); ctx.moveTo(0, -z * 2.4); ctx.lineTo(-z * 0.25, -z * 1.6); ctx.lineTo(z * 0.25, -z * 1.6); ctx.lineTo(0, -z * 0.8); ctx.stroke();
       break;
     }
     case 'poi_monster_lair': {
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.moveTo(0, z * 0.6);
-      ctx.lineTo(-z * 1.2, -z * 0.8);
-      ctx.lineTo(z * 1.2, -z * 0.8);
-      ctx.closePath();
-      ctx.fill();
+      // Malevolent purple glow
+      const mlGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 3.5);
+      mlGlow.addColorStop(0, 'rgba(100,20,120,0.35)'); mlGlow.addColorStop(0.5, 'rgba(80,10,100,0.15)'); mlGlow.addColorStop(1, 'rgba(60,0,80,0)');
+      ctx.fillStyle = mlGlow; ctx.beginPath(); ctx.arc(0, 0, z * 3.5, 0, Math.PI * 2); ctx.fill();
+      // Cave mouth
+      ctx.fillStyle = '#1a1020';
+      ctx.beginPath(); ctx.moveTo(-z * 2.0, z * 0.6); ctx.quadraticCurveTo(0, -z * 2.0, z * 2.0, z * 0.6); ctx.closePath(); ctx.fill();
+      // Rim
+      ctx.lineWidth = z * 0.3; ctx.strokeStyle = '#4a3050';
+      ctx.beginPath(); ctx.moveTo(-z * 2.0, z * 0.6); ctx.quadraticCurveTo(0, -z * 1.8, z * 2.0, z * 0.6); ctx.stroke();
+      // Skull marks at high zoom
+      if (z >= 4) {
+        ctx.fillStyle = 'rgba(200,180,200,0.7)';
+        ctx.beginPath(); ctx.arc(-z * 0.6, z * 0.0, z * 0.3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1a1020';
+        ctx.fillRect(-z * 0.72, z * 0.06, z * 0.18, z * 0.16); ctx.fillRect(-z * 0.5, z * 0.06, z * 0.18, z * 0.16);
+      }
       break;
     }
     case 'poi_road_inn': {
-      ctx.fillStyle = col;
-      ctx.fillRect(-z * 1.4, -z * 1.0, z * 2.8, z * 1.8);
-      ctx.fillStyle = 'rgba(255,200,100,0.35)';
-      ctx.fillRect(-z * 0.5, -z * 1.6, z * 1.0, z * 0.35);
+      // Warm orange glow
+      const riGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 3.2);
+      riGlow.addColorStop(0, 'rgba(255,180,60,0.2)'); riGlow.addColorStop(1, 'rgba(255,140,30,0)');
+      ctx.fillStyle = riGlow; ctx.beginPath(); ctx.arc(0, 0, z * 3.2, 0, Math.PI * 2); ctx.fill();
+      // Walls
+      ctx.fillStyle = '#b09a70'; ctx.fillRect(-z * 1.6, -z * 1.2, z * 3.2, z * 2.0);
+      // Thatched roof
+      ctx.fillStyle = '#8a6a30';
+      ctx.beginPath(); ctx.moveTo(-z * 1.9, -z * 1.2); ctx.lineTo(0, -z * 2.6); ctx.lineTo(z * 1.9, -z * 1.2); ctx.closePath(); ctx.fill();
+      // Warm windows
+      const riWinFlicker = 0.85 + Math.sin(time * 0.002 + obj.variant) * 0.15;
+      ctx.fillStyle = `rgba(255,200,80,${(0.7 * riWinFlicker).toFixed(2)})`;
+      ctx.fillRect(-z * 1.1, -z * 0.7, z * 0.65, z * 0.75);
+      ctx.fillRect(z * 0.45, -z * 0.7, z * 0.65, z * 0.75);
+      // Door
+      ctx.fillStyle = '#5a3a18'; ctx.fillRect(-z * 0.28, z * 0.0, z * 0.56, z * 0.8);
+      // Hanging sign post
+      ctx.fillStyle = '#7a5030'; ctx.fillRect(z * 1.5, -z * 1.8, z * 0.15, z * 1.1);
+      ctx.fillRect(z * 1.4, -z * 1.9, z * 0.55, z * 0.45);
       break;
     }
     case 'poi_farmstead': {
@@ -657,7 +723,7 @@ export default function WorldMap() {
       }
 
       // ── Ambient entities ─────────────────────────────────────────────
-      if (zoom >= 4) {
+      if (zoom >= 2) {
         for (const entity of visibleEntities) {
           const t = timestamp * 0.001;
           const animX = entity.x + Math.sin(t * entity.speed + entity.phase) * entity.radius;
@@ -725,24 +791,49 @@ export default function WorldMap() {
                   ctx.globalAlpha = 1;
                   break;
                 }
-                case 'wolf':
-                  ctx.fillStyle = '#606060'; ctx.fillRect(-z * 0.8, -z * 0.4, z * 1.6, z * 0.8);
+                case 'wolf': {
+                  const wGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.2);
+                  wGlow.addColorStop(0, 'rgba(60,60,60,0.4)'); wGlow.addColorStop(1, 'rgba(60,60,60,0)');
+                  ctx.fillStyle = wGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.2, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#606060'; ctx.fillRect(-z * 1.0, -z * 0.5, z * 2.0, z * 1.0);
+                  if (z >= 4) { ctx.beginPath(); ctx.moveTo(-z * 0.9, -z * 0.5); ctx.lineTo(-z * 1.3, -z * 1.3); ctx.lineTo(-z * 0.4, -z * 0.5); ctx.closePath(); ctx.fill(); }
                   break;
+                }
                 case 'bandit': case 'warband':
                   ctx.fillStyle = '#8a3030'; ctx.fillRect(-z * 0.35, -z * 0.9, z * 0.7, z * 0.9);
                   ctx.beginPath(); ctx.arc(0, -z * 1.2, z * 0.35, 0, Math.PI * 2); ctx.fill();
                   break;
-                case 'bear':
-                  ctx.fillStyle = '#5a3a1a'; ctx.fillRect(-z * 1, -z * 0.6, z * 2, z * 1.2);
+                case 'bear': {
+                  const bGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.7);
+                  bGlow.addColorStop(0, 'rgba(90,58,26,0.4)'); bGlow.addColorStop(1, 'rgba(90,58,26,0)');
+                  ctx.fillStyle = bGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.7, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#5a3a1a'; ctx.fillRect(-z * 1.1, -z * 0.7, z * 2.2, z * 1.3);
+                  if (z >= 4) { ctx.beginPath(); ctx.arc(-z * 0.8, -z * 1.0, z * 0.5, 0, Math.PI * 2); ctx.fill(); }
                   break;
-                case 'deer':
-                  ctx.fillStyle = '#a07850'; ctx.fillRect(-z * 0.7, -z * 0.4, z * 1.4, z * 0.7);
+                }
+                case 'deer': {
+                  const dGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.4);
+                  dGlow.addColorStop(0, 'rgba(180,140,80,0.35)'); dGlow.addColorStop(1, 'rgba(180,140,80,0)');
+                  ctx.fillStyle = dGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.4, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#a07850'; ctx.fillRect(-z * 0.9, -z * 0.5, z * 1.8, z * 0.9);
+                  if (z >= 4) {
+                    ctx.beginPath(); ctx.arc(-z * 0.65, -z * 0.85, z * 0.38, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#7a5830'; ctx.lineWidth = z * 0.14;
+                    ctx.beginPath(); ctx.moveTo(-z * 0.65, -z * 1.2); ctx.lineTo(-z * 1.0, -z * 1.85); ctx.moveTo(-z * 0.65, -z * 1.2); ctx.lineTo(-z * 0.3, -z * 1.85); ctx.stroke();
+                  }
                   break;
-                case 'sheep':
-                  ctx.fillStyle = '#e8e4d8'; ctx.beginPath(); ctx.ellipse(0, 0, z * 0.8, z * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+                }
+                case 'sheep': {
+                  const sGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.2);
+                  sGlow.addColorStop(0, 'rgba(240,235,215,0.3)'); sGlow.addColorStop(1, 'rgba(240,235,215,0)');
+                  ctx.fillStyle = sGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.2, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#e8e4d8'; ctx.beginPath(); ctx.ellipse(0, 0, z * 1.0, z * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+                  if (z >= 4) { ctx.fillStyle = '#c0b8a0'; ctx.beginPath(); ctx.arc(-z * 0.7, -z * 0.35, z * 0.35, 0, Math.PI * 2); ctx.fill(); }
                   break;
+                }
                 case 'rabbit':
-                  ctx.fillStyle = '#d0c8b0'; ctx.beginPath(); ctx.ellipse(0, 0, z * 0.4, z * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#d0c8b0'; ctx.beginPath(); ctx.ellipse(0, 0, z * 0.7, z * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+                  if (z >= 3) { ctx.fillRect(-z * 0.28, -z * 0.85, z * 0.18, z * 0.55); ctx.fillRect(z * 0.1, -z * 0.95, z * 0.18, z * 0.55); }
                   break;
                 case 'caravan':
                   ctx.fillStyle = '#6a5040';
@@ -886,6 +977,51 @@ export default function WorldMap() {
         ctx.font = '8px "Courier Prime", monospace';
         ctx.fillStyle = 'rgba(200,170,80,0.55)'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
         ctx.fillText(`${loc.name} (${Math.round(dist)})`, edgeX, edgeY + 13);
+      }
+
+      // ── Wilderness POI direction arrows ──────────────────────────────
+      {
+        const POI_ARROW_COLORS: Partial<Record<WorldObjectType, string>> = {
+          poi_stockade_ruins: 'rgba(160,130,80,0.78)',
+          poi_monster_lair:   'rgba(170,60,200,0.78)',
+          poi_chapel:         'rgba(160,150,220,0.78)',
+          poi_standing_stone: 'rgba(100,200,140,0.78)',
+          poi_knight_camp:    'rgba(200,80,80,0.78)',
+        };
+        const poiArrowTypes = new Set<string>(['poi_stockade_ruins', 'poi_monster_lair', 'poi_chapel', 'poi_standing_stone', 'poi_knight_camp']);
+        const poiArrowCx = Math.floor(playerX / CHUNK_SIZE);
+        const poiArrowCy = Math.floor(playerY / CHUNK_SIZE);
+        const POI_SCAN_R = 5;
+        for (let dcy = -POI_SCAN_R; dcy <= POI_SCAN_R; dcy++) {
+          for (let dcx = -POI_SCAN_R; dcx <= POI_SCAN_R; dcx++) {
+            const sCx = poiArrowCx + dcx;
+            const sCy = poiArrowCy + dcy;
+            if (sCx < 0 || sCy < 0 || sCx >= NUM_CHUNKS_X || sCy >= NUM_CHUNKS_Y) continue;
+            const cd = getChunkData(sCx, sCy);
+            for (const obj of cd.objects) {
+              if (!poiArrowTypes.has(obj.type)) continue;
+              const dist = Math.hypot(obj.x - playerX, obj.y - playerY);
+              if (dist < 40 || dist > 600) continue;
+              const osx = (obj.x - camX) * zoom;
+              const osy = (obj.y - camY) * zoom;
+              if (osx > 20 && osx < canvasW - 20 && osy > 20 && osy < canvasH - 20) continue;
+              const angle = Math.atan2(obj.y - visY, obj.x - visX);
+              const eX = Math.max(20, Math.min(canvasW - 20, psx + Math.cos(angle) * (canvasW / 2 - 30)));
+              const eY = Math.max(20, Math.min(canvasH - 20, psy + Math.sin(angle) * (canvasH / 2 - 30)));
+              const arrowColor = POI_ARROW_COLORS[obj.type as WorldObjectType] ?? 'rgba(160,160,160,0.6)';
+              ctx.save();
+              ctx.translate(eX, eY);
+              ctx.rotate(angle + Math.PI / 2);
+              ctx.fillStyle = arrowColor;
+              ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(-5, 3.5); ctx.lineTo(5, 3.5); ctx.closePath(); ctx.fill();
+              ctx.restore();
+              ctx.font = '7px "Courier Prime", monospace';
+              ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+              ctx.fillStyle = arrowColor;
+              ctx.fillText(`${Math.round(dist)}`, eX, eY + 10);
+            }
+          }
+        }
       }
 
       // ── Day/night tint ─────────────────────────────────────────────

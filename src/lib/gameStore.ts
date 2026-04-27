@@ -316,6 +316,7 @@ interface GameStore extends GameState {
   clearBootError: () => void;
   giftNpc: (npcId: string, itemId: string) => void;
   castSpellAction: (spellId: string) => void;
+  dismissTutorial: () => void;
 }
 
 const starterInv = makeStarterInventory();
@@ -386,6 +387,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   knownSpells: [],
   spellCooldowns: {},
   bootError: null,
+  showTutorial: true,
 
   startGame: () => {
     const st = get();
@@ -424,6 +426,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   clearBootError: () => set({ bootError: null }),
+  dismissTutorial: () => set({ showTutorial: false }),
 
   setActiveSlot: (slot: number) => set({ activeSlot: slot }),
 

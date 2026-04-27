@@ -76,63 +76,171 @@ function drawObject(ctx: CanvasRenderingContext2D, obj: WorldObject, sx: number,
   ctx.save(); ctx.translate(sx, sy);
   switch (obj.type) {
     case 'hut': case 'farm': {
-      ctx.fillStyle = col;
-      ctx.fillRect(-z * 1.2, -z * 0.7, z * 2.4, z * 1.4);
+      // Stone foundation
+      ctx.fillStyle = '#7a7068'; ctx.fillRect(-z * 1.3, z * 0.55, z * 2.6, z * 0.25);
+      // Walls
+      ctx.fillStyle = col; ctx.fillRect(-z * 1.2, -z * 0.7, z * 2.4, z * 1.3);
+      // Wattle-and-daub texture lines
+      ctx.strokeStyle = `rgba(0,0,0,0.12)`; ctx.lineWidth = z * 0.08;
+      ctx.beginPath(); ctx.moveTo(-z * 1.2, -z * 0.1); ctx.lineTo(z * 1.2, -z * 0.1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-z * 1.2, z * 0.35); ctx.lineTo(z * 1.2, z * 0.35); ctx.stroke();
+      // Roof
       ctx.fillStyle = `rgb(${Math.max(0, r - 40)},${Math.max(0, g - 30)},${Math.max(0, b - 20)})`;
-      ctx.beginPath(); ctx.moveTo(-z * 1.5, -z * 0.7); ctx.lineTo(0, -z * 2.0); ctx.lineTo(z * 1.5, -z * 0.7); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-z * 0.3, z * 0.1, z * 0.6, z * 0.6);
+      ctx.beginPath(); ctx.moveTo(-z * 1.5, -z * 0.7); ctx.lineTo(0, -z * 2.1); ctx.lineTo(z * 1.5, -z * 0.7); ctx.closePath(); ctx.fill();
+      // Roof ridge line
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = z * 0.12;
+      ctx.beginPath(); ctx.moveTo(-z * 1.5, -z * 0.7); ctx.lineTo(0, -z * 2.1); ctx.lineTo(z * 1.5, -z * 0.7); ctx.stroke();
+      // Door
+      ctx.fillStyle = '#4a3018'; ctx.fillRect(-z * 0.3, z * 0.08, z * 0.6, z * 0.52);
+      ctx.fillStyle = 'rgba(255,210,120,0.22)'; ctx.fillRect(-z * 0.28, z * 0.1, z * 0.58, z * 0.48); // window glow
+      // Chimney
+      ctx.fillStyle = '#6a6058'; ctx.fillRect(z * 0.55, -z * 2.0, z * 0.3, z * 0.7);
       break;
     }
     case 'barn': {
-      ctx.fillStyle = col; ctx.fillRect(-z * 1.8, -z * 1.0, z * 3.6, z * 2.0);
-      ctx.fillStyle = `rgb(${Math.max(0, r - 50)},${Math.max(0, g - 30)},${Math.max(0, b - 10)})`;
-      ctx.beginPath(); ctx.moveTo(-z * 2.0, -z * 1.0); ctx.lineTo(0, -z * 2.5); ctx.lineTo(z * 2.0, -z * 1.0); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = z * 0.15;
-      ctx.beginPath(); ctx.moveTo(-z * 0.8, z * 1.0); ctx.lineTo(z * 0.8, -z * 0.2); ctx.moveTo(z * 0.8, z * 1.0); ctx.lineTo(-z * 0.8, -z * 0.2); ctx.stroke();
+      // Base
+      ctx.fillStyle = '#5a5048'; ctx.fillRect(-z * 1.9, z * 0.85, z * 3.8, z * 0.2);
+      // Walls — weathered red
+      ctx.fillStyle = col; ctx.fillRect(-z * 1.8, -z * 1.0, z * 3.6, z * 1.9);
+      // Horizontal plank lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = z * 0.09;
+      for (let pl = -0.6; pl <= 0.8; pl += 0.35) {
+        ctx.beginPath(); ctx.moveTo(-z * 1.8, pl * z); ctx.lineTo(z * 1.8, pl * z); ctx.stroke();
+      }
+      // Roof
+      ctx.fillStyle = `rgb(${Math.max(0, r - 55)},${Math.max(0, g - 35)},${Math.max(0, b - 10)})`;
+      ctx.beginPath(); ctx.moveTo(-z * 2.1, -z * 1.0); ctx.lineTo(0, -z * 2.7); ctx.lineTo(z * 2.1, -z * 1.0); ctx.closePath(); ctx.fill();
+      // Cross-brace on barn door
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = z * 0.17;
+      ctx.beginPath(); ctx.moveTo(-z * 0.75, z * 0.85); ctx.lineTo(z * 0.75, -z * 0.15); ctx.moveTo(z * 0.75, z * 0.85); ctx.lineTo(-z * 0.75, -z * 0.15); ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.strokeRect(-z * 0.75, -z * 0.15, z * 1.5, z * 1.0);
       break;
     }
     case 'windmill': {
       const spin = time * 0.0008 * (1 + obj.variant * 0.3);
-      ctx.fillStyle = col; ctx.fillRect(-z * 0.5, -z * 2.0, z, z * 2.5);
-      ctx.strokeStyle = `rgb(${Math.max(0, r - 20)},${Math.max(0, g - 20)},${Math.max(0, b + 10)})`; ctx.lineWidth = z * 0.5;
-      for (let i = 0; i < 4; i++) { const a = spin + (i / 4) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(0, -z * 1.5); ctx.lineTo(Math.cos(a) * z * 2.2, -z * 1.5 + Math.sin(a) * z * 2.2); ctx.stroke(); }
+      // Stone base
+      ctx.fillStyle = '#9a9488';
+      ctx.beginPath(); ctx.moveTo(-z * 0.7, z * 0.5); ctx.lineTo(-z * 0.5, -z * 2.0); ctx.lineTo(z * 0.5, -z * 2.0); ctx.lineTo(z * 0.7, z * 0.5); ctx.closePath(); ctx.fill();
+      // Stone course lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = z * 0.08;
+      for (let sl = -1.5; sl < 0.5; sl += 0.5) { ctx.beginPath(); ctx.moveTo(-z * 0.65, sl * z); ctx.lineTo(z * 0.65, sl * z); ctx.stroke(); }
+      // Door
+      ctx.fillStyle = '#5a4228'; ctx.fillRect(-z * 0.2, z * 0.0, z * 0.4, z * 0.5);
+      // Sail frames
+      ctx.strokeStyle = `rgb(${Math.max(0, r - 20)},${Math.max(0, g - 20)},${Math.max(0, b + 10)})`; ctx.lineWidth = z * 0.45;
+      for (let i = 0; i < 4; i++) {
+        const a = spin + (i / 4) * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a) * z * 0.4, -z * 1.5 + Math.sin(a) * z * 0.4); ctx.lineTo(Math.cos(a) * z * 2.2, -z * 1.5 + Math.sin(a) * z * 2.2); ctx.stroke();
+        // Canvas fill on sail
+        ctx.fillStyle = 'rgba(240,230,200,0.35)';
+        ctx.beginPath(); ctx.moveTo(Math.cos(a) * z * 0.5, -z * 1.5 + Math.sin(a) * z * 0.5); ctx.lineTo(Math.cos(a) * z * 2.0, -z * 1.5 + Math.sin(a) * z * 2.0); ctx.lineTo(Math.cos(a + 0.25) * z * 1.8, -z * 1.5 + Math.sin(a + 0.25) * z * 1.8); ctx.closePath(); ctx.fill();
+      }
       break;
     }
     case 'watchtower': {
-      ctx.fillStyle = col; ctx.fillRect(-z * 0.9, -z * 3.0, z * 1.8, z * 3.5);
+      // Base broadening
+      ctx.fillStyle = `rgb(${Math.max(0, r - 20)},${Math.max(0, g - 18)},${Math.max(0, b - 15)})`;
+      ctx.fillRect(-z * 1.15, z * 0.05, z * 2.3, z * 0.4);
+      // Tower body with slight taper
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.moveTo(-z * 1.0, z * 0.05); ctx.lineTo(-z * 0.85, -z * 3.0); ctx.lineTo(z * 0.85, -z * 3.0); ctx.lineTo(z * 1.0, z * 0.05); ctx.closePath(); ctx.fill();
+      // Stone course lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = z * 0.07;
+      for (let sc = -2.5; sc < 0; sc += 0.55) { ctx.beginPath(); ctx.moveTo(-z * 0.95, sc * z); ctx.lineTo(z * 0.95, sc * z); ctx.stroke(); }
+      // Crenellations
       ctx.fillStyle = `rgb(${Math.max(0, r - 15)},${Math.max(0, g - 15)},${Math.max(0, b - 10)})`;
-      for (let i = 0; i < 3; i++) ctx.fillRect(-z * 0.9 + i * z * 0.7, -z * 3.6, z * 0.45, z * 0.6);
-      ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(-z * 0.12, -z * 2.0, z * 0.24, z * 0.6);
+      for (let i = 0; i < 3; i++) ctx.fillRect(-z * 0.88 + i * z * 0.64, -z * 3.55, z * 0.4, z * 0.6);
+      // Arrow slit
+      ctx.fillStyle = '#1a1612'; ctx.fillRect(-z * 0.12, -z * 2.1, z * 0.24, z * 0.65);
+      // Torch flicker
+      const torchPulse = 0.75 + Math.sin(time * 0.006) * 0.25;
+      ctx.fillStyle = `rgba(255,${160 + Math.floor(torchPulse * 40)},40,${0.55 * torchPulse})`;
+      ctx.beginPath(); ctx.arc(0, -z * 3.1, z * 0.28, 0, Math.PI * 2); ctx.fill();
       break;
     }
     case 'stone_wall': {
-      ctx.fillStyle = col; ctx.fillRect(-z * 0.6, -z * 0.5, z * 1.2, z * 1.0);
-      ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 0.5; ctx.strokeRect(-z * 0.6, -z * 0.5, z * 1.2, z * 1.0);
+      // Wall body
+      ctx.fillStyle = col; ctx.fillRect(-z * 0.65, -z * 0.5, z * 1.3, z * 1.0);
+      // Individual stone blocks
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = z * 0.07;
+      ctx.beginPath(); ctx.moveTo(-z * 0.65, z * 0.05); ctx.lineTo(z * 0.65, z * 0.05); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -z * 0.5); ctx.lineTo(0, z * 0.05); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-z * 0.32, z * 0.05); ctx.lineTo(-z * 0.32, z * 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(z * 0.32, z * 0.05); ctx.lineTo(z * 0.32, z * 0.5); ctx.stroke();
+      // Cap
+      ctx.fillStyle = `rgb(${Math.max(0, r - 15)},${Math.max(0, g - 12)},${Math.max(0, b - 8)})`;
+      ctx.fillRect(-z * 0.7, -z * 0.55, z * 1.4, z * 0.12);
       break;
     }
     case 'market_stall': {
-      const awningCol = ['#e05050', '#50a050', '#5050e0', '#e0a020'][obj.variant % 4];
-      ctx.fillStyle = awningCol; ctx.fillRect(-z * 1.6, -z * 1.8, z * 3.2, z * 0.5);
-      ctx.fillStyle = col; ctx.fillRect(-z * 1.4, -z * 1.3, z * 2.8, z * 1.0);
+      const awningCols = ['#c84040', '#3a8a3a', '#3848c8', '#c89020'];
+      const awCol = awningCols[obj.variant % 4]!;
+      // Awning with shadow underside
+      ctx.fillStyle = awCol; ctx.fillRect(-z * 1.65, -z * 1.85, z * 3.3, z * 0.55);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(-z * 1.65, -z * 1.35, z * 3.3, z * 0.15);
+      // Awning stripe
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      for (let s = -1.4; s < 1.5; s += 0.55) { ctx.fillRect(s * z, -z * 1.85, z * 0.25, z * 0.55); }
+      // Counter
+      ctx.fillStyle = col; ctx.fillRect(-z * 1.4, -z * 1.2, z * 2.8, z * 1.05);
+      // Goods on counter
+      ctx.fillStyle = '#c87040'; ctx.beginPath(); ctx.arc(-z * 0.7, -z * 1.0, z * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#50a040'; ctx.beginPath(); ctx.arc(z * 0.2, -z * 1.0, z * 0.19, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d4a040'; ctx.fillRect(z * 0.65, -z * 1.1, z * 0.4, z * 0.3);
+      // Support poles
       ctx.fillStyle = `rgb(${Math.max(0, r - 40)},${Math.max(0, g - 30)},${Math.max(0, b - 20)})`;
-      ctx.fillRect(-z * 1.2, -z * 0.3, z * 0.25, z * 0.6); ctx.fillRect(z * 0.95, -z * 0.3, z * 0.25, z * 0.6);
+      ctx.fillRect(-z * 1.3, -z * 0.15, z * 0.22, z * 0.7); ctx.fillRect(z * 1.08, -z * 0.15, z * 0.22, z * 0.7);
       break;
     }
     case 'ruins_pillar': {
-      const h = z * (1.5 + (obj.variant % 3) * 0.8);
-      ctx.fillStyle = col; ctx.fillRect(-z * 0.5, -h, z, h);
+      const ph = z * (1.5 + (obj.variant % 3) * 0.9);
+      // Mossy base
+      ctx.fillStyle = 'rgba(60,90,50,0.35)'; ctx.fillRect(-z * 0.65, -z * 0.15, z * 1.3, z * 0.2);
+      // Pillar body with crack lines
+      ctx.fillStyle = col; ctx.fillRect(-z * 0.5, -ph, z, ph);
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = z * 0.07;
+      ctx.beginPath(); ctx.moveTo(-z * 0.15, -ph * 0.8); ctx.lineTo(z * 0.12, -ph * 0.4); ctx.lineTo(-z * 0.08, -ph * 0.15); ctx.stroke();
+      // Fluting channels
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = z * 0.06;
+      for (let f = -0.25; f <= 0.25; f += 0.25) { ctx.beginPath(); ctx.moveTo(f * z, -ph); ctx.lineTo(f * z, 0); ctx.stroke(); }
+      // Broken top fragments
       ctx.fillStyle = `rgb(${Math.max(0, r - 20)},${Math.max(0, g - 15)},${Math.max(0, b - 10)})`;
-      ctx.fillRect(-z * 0.6, -h - z * 0.3, z * 0.4, z * 0.3); ctx.fillRect(z * 0.2, -h - z * 0.5, z * 0.4, z * 0.5);
+      ctx.fillRect(-z * 0.62, -ph - z * 0.32, z * 0.38, z * 0.32);
+      ctx.fillRect(z * 0.18, -ph - z * 0.52, z * 0.42, z * 0.52);
       break;
     }
     case 'stone_circle': {
-      ctx.strokeStyle = col; ctx.lineWidth = z * 0.5; ctx.beginPath(); ctx.arc(0, 0, z * 0.8, 0, Math.PI * 2); ctx.stroke();
+      // Individual standing stones around ring
+      const numStones = 6 + (obj.variant % 3);
+      const ringR = z * 2.0;
+      for (let si = 0; si < numStones; si++) {
+        if (si === 2 && obj.variant % 2 === 1) continue; // fallen stone gap
+        const sa = (si / numStones) * Math.PI * 2;
+        const sx2 = Math.cos(sa) * ringR, sy2 = Math.sin(sa) * ringR;
+        const sh = z * (0.9 + (si % 3) * 0.35);
+        ctx.fillStyle = si % 2 === 0 ? col : `rgb(${Math.max(0,r-12)},${Math.max(0,g-10)},${Math.max(0,b-8)})`;
+        ctx.fillRect(sx2 - z * 0.22, sy2 - sh, z * 0.44, sh);
+        ctx.fillStyle = 'rgba(60,90,50,0.3)'; ctx.fillRect(sx2 - z * 0.25, sy2 - z * 0.15, z * 0.5, z * 0.15);
+      }
+      // Inner altar stone (flat)
+      ctx.fillStyle = `rgb(${Math.max(0,r-25)},${Math.max(0,g-20)},${Math.max(0,b-18)})`;
+      ctx.fillRect(-z * 0.6, -z * 0.15, z * 1.2, z * 0.3);
       break;
     }
     case 'well': {
-      ctx.strokeStyle = col; ctx.lineWidth = z * 0.4; ctx.beginPath(); ctx.arc(0, 0, z * 1.0, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = `rgb(${Math.max(0, r - 30)},${Math.max(0, g - 20)},${Math.max(0, b)})`; ctx.lineWidth = z * 0.3;
-      ctx.beginPath(); ctx.moveTo(-z, -z * 0.8); ctx.lineTo(z, -z * 0.8); ctx.stroke();
+      // Stone base ring
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, z * 1.15, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1a1614'; ctx.beginPath(); ctx.arc(0, 0, z * 0.6, 0, Math.PI * 2); ctx.fill();
+      // Rim detail
+      ctx.strokeStyle = `rgb(${Math.max(0,r-30)},${Math.max(0,g-20)},${Math.max(0,b)})`;
+      ctx.lineWidth = z * 0.22; ctx.beginPath(); ctx.arc(0, 0, z * 1.05, 0, Math.PI * 2); ctx.stroke();
+      // Crossbeam + post
+      ctx.fillStyle = '#6a4a28'; ctx.fillRect(-z * 1.2, -z * 1.4, z * 0.22, z * 1.4); ctx.fillRect(z * 0.98, -z * 1.4, z * 0.22, z * 1.4);
+      ctx.fillRect(-z * 1.2, -z * 1.5, z * 2.4, z * 0.22);
+      // Rope + bucket
+      ctx.strokeStyle = '#b09060'; ctx.lineWidth = z * 0.1;
+      ctx.beginPath(); ctx.moveTo(0, -z * 1.28); ctx.lineTo(0, -z * 0.55); ctx.stroke();
+      ctx.fillStyle = '#7a5030'; ctx.fillRect(-z * 0.2, -z * 0.55, z * 0.4, z * 0.35);
       break;
     }
     case 'campfire': {
@@ -146,29 +254,69 @@ function drawObject(ctx: CanvasRenderingContext2D, obj: WorldObject, sx: number,
       break;
     }
     case 'dock': {
-      ctx.fillStyle = col; ctx.fillRect(-z * 0.4, -z * 2.5, z * 0.8, z * 3.0);
-      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.5;
-      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-z * 0.4, -z * 2.0 + i * z * 0.7); ctx.lineTo(z * 0.4, -z * 2.0 + i * z * 0.7); ctx.stroke(); }
+      // Pilings
+      ctx.fillStyle = `rgb(${Math.max(0,r-30)},${Math.max(0,g-22)},${Math.max(0,b-15)})`;
+      for (let p = -1; p <= 1; p++) { ctx.fillRect(p * z * 0.7 - z * 0.14, -z * 2.55, z * 0.28, z * 3.0); }
+      // Planks
+      ctx.fillStyle = col; ctx.fillRect(-z * 1.0, -z * 2.5, z * 2.0, z * 3.0);
+      // Plank lines
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = z * 0.07;
+      for (let d = -2.0; d <= 0.4; d += 0.6) { ctx.beginPath(); ctx.moveTo(-z, d * z); ctx.lineTo(z, d * z); ctx.stroke(); }
+      // Nail dots
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      for (let nd = -1.8; nd <= 0.2; nd += 0.6) { ctx.beginPath(); ctx.arc(-z * 0.55, nd * z, z * 0.07, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(z * 0.55, nd * z, z * 0.07, 0, Math.PI * 2); ctx.fill(); }
+      // Water shimmer suggestion
+      ctx.fillStyle = 'rgba(70,130,180,0.15)'; ctx.fillRect(-z, z * 0.5, z * 2.0, z * 0.6);
       break;
     }
     case 'shrine': {
-      ctx.fillStyle = col; ctx.fillRect(-z * 0.25, -z * 2.0, z * 0.5, z * 2.5); ctx.fillRect(-z * 0.9, -z * 1.4, z * 1.8, z * 0.45);
+      // Stone plinth
+      ctx.fillStyle = `rgb(${Math.max(0,r-18)},${Math.max(0,g-15)},${Math.max(0,b-12)})`;
+      ctx.fillRect(-z * 0.55, z * 0.3, z * 1.1, z * 0.22);
+      // Post
+      ctx.fillStyle = col; ctx.fillRect(-z * 0.24, -z * 2.1, z * 0.48, z * 2.4);
+      // Cross arm
+      ctx.fillRect(-z * 0.95, -z * 1.45, z * 1.9, z * 0.42);
+      // Soft holy glow
+      const shGlow = ctx.createRadialGradient(0, -z * 1.45, 0, 0, -z * 1.45, z * 1.8);
+      shGlow.addColorStop(0, 'rgba(255,240,200,0.14)'); shGlow.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = shGlow; ctx.beginPath(); ctx.arc(0, -z * 1.45, z * 1.8, 0, Math.PI * 2); ctx.fill();
+      // Prayer flags
+      ctx.strokeStyle = 'rgba(200,160,60,0.55)'; ctx.lineWidth = z * 0.08;
+      ctx.beginPath(); ctx.moveTo(-z * 0.95, -z * 1.45); ctx.lineTo(-z * 1.8, -z * 0.7); ctx.moveTo(z * 0.95, -z * 1.45); ctx.lineTo(z * 1.8, -z * 0.7); ctx.stroke();
       break;
     }
     case 'gate': {
+      // Pillars with stone courses
       ctx.fillStyle = col;
-      ctx.fillRect(-z * 2.0, -z * 2.5, z * 1.0, z * 2.5); ctx.fillRect(z * 1.0, -z * 2.5, z * 1.0, z * 2.5);
-      ctx.strokeStyle = col; ctx.lineWidth = z * 0.8;
-      ctx.beginPath(); ctx.arc(0, -z * 2.5, z * 1.5, Math.PI, 0, false); ctx.stroke();
+      ctx.fillRect(-z * 2.1, -z * 2.6, z * 1.05, z * 2.6); ctx.fillRect(z * 1.05, -z * 2.6, z * 1.05, z * 2.6);
+      // Pillar course marks
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = z * 0.08;
+      for (let gc = -2.2; gc < 0; gc += 0.65) { ctx.beginPath(); ctx.moveTo(-z * 2.1, gc * z); ctx.lineTo(-z * 1.05, gc * z); ctx.stroke(); ctx.beginPath(); ctx.moveTo(z * 1.05, gc * z); ctx.lineTo(z * 2.1, gc * z); ctx.stroke(); }
+      // Arch
+      ctx.strokeStyle = col; ctx.lineWidth = z * 0.85;
+      ctx.beginPath(); ctx.arc(0, -z * 2.6, z * 1.55, Math.PI, 0, false); ctx.stroke();
+      // Portcullis bars
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = z * 0.14;
+      for (let gb = -1; gb <= 1; gb++) { ctx.beginPath(); ctx.moveTo(gb * z * 0.48, -z * 2.6); ctx.lineTo(gb * z * 0.48, -z * 0.2); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(-z * 1.0, -z * 1.6); ctx.lineTo(z * 1.0, -z * 1.6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-z * 1.0, -z * 0.8); ctx.lineTo(z * 1.0, -z * 0.8); ctx.stroke();
       break;
     }
     case 'fence': {
-      ctx.strokeStyle = col; ctx.lineWidth = z * 0.3;
-      ctx.beginPath();
-      ctx.moveTo(-z * 0.8, z * 0.2); ctx.lineTo(-z * 0.8, -z * 0.8);
-      ctx.moveTo(z * 0.8, z * 0.2); ctx.lineTo(z * 0.8, -z * 0.8);
-      ctx.moveTo(-z * 0.8, -z * 0.35); ctx.lineTo(z * 0.8, -z * 0.35);
-      ctx.stroke();
+      // Posts
+      const fCol = col;
+      ctx.fillStyle = fCol;
+      ctx.fillRect(-z * 0.88, -z * 0.88, z * 0.24, z * 1.1);
+      ctx.fillRect(z * 0.64, -z * 0.88, z * 0.24, z * 1.1);
+      // Post grain
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = z * 0.06;
+      ctx.beginPath(); ctx.moveTo(-z * 0.76, -z * 0.88); ctx.lineTo(-z * 0.76, z * 0.22); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(z * 0.76, -z * 0.88); ctx.lineTo(z * 0.76, z * 0.22); ctx.stroke();
+      // Two rails
+      ctx.fillStyle = `rgb(${Math.max(0,r-15)},${Math.max(0,g-12)},${Math.max(0,b-10)})`;
+      ctx.fillRect(-z * 0.88, -z * 0.6, z * 1.76, z * 0.18);
+      ctx.fillRect(-z * 0.88, -z * 0.12, z * 1.76, z * 0.18);
       break;
     }
     case 'poi_lakeshore': {
@@ -532,6 +680,11 @@ export default function WorldMap() {
   const seasonRef = useRef<Season>('thaw');
   const lastRafTsRef = useRef(0);
 
+  // Fog cache — static holes (visited locations) rebuilt only when visitedLocations changes
+  const staticFogRef = useRef<HTMLCanvasElement | null>(null);
+  const fogLocHashRef = useRef('');
+  const fogSizeRef = useRef({ w: 0, h: 0 });
+
   const stateRef = useRef({
     playerX: 0, playerY: 0,
     season: 'thaw' as Season,
@@ -792,9 +945,9 @@ export default function WorldMap() {
                   break;
                 }
                 case 'wolf': {
-                  const wGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.2);
-                  wGlow.addColorStop(0, 'rgba(60,60,60,0.4)'); wGlow.addColorStop(1, 'rgba(60,60,60,0)');
-                  ctx.fillStyle = wGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.2, 0, Math.PI * 2); ctx.fill();
+                  // Presence halo — globalAlpha circle, no gradient allocation
+                  ctx.globalAlpha = 0.28; ctx.fillStyle = '#505050';
+                  ctx.beginPath(); ctx.arc(0, 0, z * 2.2, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
                   ctx.fillStyle = '#606060'; ctx.fillRect(-z * 1.0, -z * 0.5, z * 2.0, z * 1.0);
                   if (z >= 4) { ctx.beginPath(); ctx.moveTo(-z * 0.9, -z * 0.5); ctx.lineTo(-z * 1.3, -z * 1.3); ctx.lineTo(-z * 0.4, -z * 0.5); ctx.closePath(); ctx.fill(); }
                   break;
@@ -804,17 +957,15 @@ export default function WorldMap() {
                   ctx.beginPath(); ctx.arc(0, -z * 1.2, z * 0.35, 0, Math.PI * 2); ctx.fill();
                   break;
                 case 'bear': {
-                  const bGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.7);
-                  bGlow.addColorStop(0, 'rgba(90,58,26,0.4)'); bGlow.addColorStop(1, 'rgba(90,58,26,0)');
-                  ctx.fillStyle = bGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.7, 0, Math.PI * 2); ctx.fill();
+                  ctx.globalAlpha = 0.28; ctx.fillStyle = '#5a3a1a';
+                  ctx.beginPath(); ctx.arc(0, 0, z * 2.7, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
                   ctx.fillStyle = '#5a3a1a'; ctx.fillRect(-z * 1.1, -z * 0.7, z * 2.2, z * 1.3);
                   if (z >= 4) { ctx.beginPath(); ctx.arc(-z * 0.8, -z * 1.0, z * 0.5, 0, Math.PI * 2); ctx.fill(); }
                   break;
                 }
                 case 'deer': {
-                  const dGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.4);
-                  dGlow.addColorStop(0, 'rgba(180,140,80,0.35)'); dGlow.addColorStop(1, 'rgba(180,140,80,0)');
-                  ctx.fillStyle = dGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.4, 0, Math.PI * 2); ctx.fill();
+                  ctx.globalAlpha = 0.25; ctx.fillStyle = '#b08848';
+                  ctx.beginPath(); ctx.arc(0, 0, z * 2.4, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
                   ctx.fillStyle = '#a07850'; ctx.fillRect(-z * 0.9, -z * 0.5, z * 1.8, z * 0.9);
                   if (z >= 4) {
                     ctx.beginPath(); ctx.arc(-z * 0.65, -z * 0.85, z * 0.38, 0, Math.PI * 2); ctx.fill();
@@ -824,9 +975,8 @@ export default function WorldMap() {
                   break;
                 }
                 case 'sheep': {
-                  const sGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, z * 2.2);
-                  sGlow.addColorStop(0, 'rgba(240,235,215,0.3)'); sGlow.addColorStop(1, 'rgba(240,235,215,0)');
-                  ctx.fillStyle = sGlow; ctx.beginPath(); ctx.arc(0, 0, z * 2.2, 0, Math.PI * 2); ctx.fill();
+                  ctx.globalAlpha = 0.22; ctx.fillStyle = '#e8e4d8';
+                  ctx.beginPath(); ctx.arc(0, 0, z * 2.2, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
                   ctx.fillStyle = '#e8e4d8'; ctx.beginPath(); ctx.ellipse(0, 0, z * 1.0, z * 0.7, 0, 0, Math.PI * 2); ctx.fill();
                   if (z >= 4) { ctx.fillStyle = '#c0b8a0'; ctx.beginPath(); ctx.arc(-z * 0.7, -z * 0.35, z * 0.35, 0, Math.PI * 2); ctx.fill(); }
                   break;
@@ -890,26 +1040,44 @@ export default function WorldMap() {
         }
       }
 
-      // ── Fog of war ───────────────────────────────────────────────────
+      // ── Fog of war (two-canvas: static locations cached, player hole per-frame) ──
       if (!fogCanvasRef.current) fogCanvasRef.current = document.createElement('canvas');
       const fog = fogCanvasRef.current;
       if (fog.width !== canvasW || fog.height !== canvasH) { fog.width = canvasW; fog.height = canvasH; }
+
+      // Static fog layer — only rebuilt when visited-location set or canvas size changes
+      const locHash = visitedLocations.join(',') + `|${camX.toFixed(1)},${camY.toFixed(1)},${zoom.toFixed(2)},${canvasW},${canvasH}`;
+      if (!staticFogRef.current) staticFogRef.current = document.createElement('canvas');
+      const sfog = staticFogRef.current;
+      if (sfog.width !== canvasW || sfog.height !== canvasH) {
+        sfog.width = canvasW; sfog.height = canvasH;
+        fogLocHashRef.current = ''; // force rebuild on resize
+      }
+      if (fogLocHashRef.current !== locHash) {
+        fogLocHashRef.current = locHash;
+        const sctx = sfog.getContext('2d')!;
+        sctx.clearRect(0, 0, canvasW, canvasH);
+        sctx.fillStyle = 'rgba(4,4,8,0.82)';
+        sctx.fillRect(0, 0, canvasW, canvasH);
+        sctx.globalCompositeOperation = 'destination-out';
+        for (const locId of visitedLocations) {
+          const coord = LOCATION_COORDS[locId];
+          if (!coord) continue;
+          const lsx = (coord.x - camX) * zoom;
+          const lsy = (coord.y - camY) * zoom;
+          punchVisionHole(sctx, lsx, lsy, 160 * zoom);
+        }
+        sctx.globalCompositeOperation = 'source-over';
+      }
+
+      // Per-frame: composite static fog then punch only the player hole
       const fogCtx = fog.getContext('2d')!;
       fogCtx.clearRect(0, 0, canvasW, canvasH);
-      fogCtx.fillStyle = 'rgba(4,4,8,0.82)';
-      fogCtx.fillRect(0, 0, canvasW, canvasH);
+      fogCtx.drawImage(sfog, 0, 0);
       fogCtx.globalCompositeOperation = 'destination-out';
-
       const playerSX = (playerX - camX) * zoom;
       const playerSY = (playerY - camY) * zoom;
       punchVisionHole(fogCtx, playerSX, playerSY, 110 * zoom);
-      for (const locId of visitedLocations) {
-        const coord = LOCATION_COORDS[locId];
-        if (!coord) continue;
-        const lsx = (coord.x - camX) * zoom;
-        const lsy = (coord.y - camY) * zoom;
-        punchVisionHole(fogCtx, lsx, lsy, 160 * zoom);
-      }
       fogCtx.globalCompositeOperation = 'source-over';
       ctx.drawImage(fog, 0, 0);
 

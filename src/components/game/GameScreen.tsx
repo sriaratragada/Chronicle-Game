@@ -26,7 +26,6 @@ import BattleScreen from '@/components/game/BattleScreen';
 import ArcanePanel from '@/components/game/ArcanePanel';
 import EscortTracker from '@/components/game/EscortTracker';
 import SailingOverlay from '@/components/game/SailingOverlay';
-import TutorialOverlay from '@/components/game/TutorialOverlay';
 
 // Module-level components so they are never recreated inside a render
 
@@ -155,7 +154,6 @@ export default function GameScreen() {
   const phase = useGameStore(s => s.phase);
   const startGame = useGameStore(s => s.startGame);
   const tutorialObjective = useGameStore(s => s.tutorialObjective);
-  const showTutorial = useGameStore(s => s.showTutorial);
 
   useEffect(() => {
     if (atlasPrefetchStarted.current) return;
@@ -208,7 +206,6 @@ export default function GameScreen() {
       <ArcanePanel />
       {phase !== 'dungeon' && <DialogueOverlay />}
       {phase === 'dead' && <DeathScreen onRestart={startGame} />}
-      {showTutorial && phase === 'playing' && <TutorialOverlay />}
     </div>
   );
 }

@@ -203,6 +203,8 @@ export default function TutorialOverlay() {
   const rafRef = useRef<number>(0);
   const startTsRef = useRef<number>(0);
   const sceneStartRef = useRef<number>(0);
+  // sceneRef mirrors scene state for use inside RAF closure without stale capture
+  const sceneRef = useRef(0);
   const [scene, setScene] = useState(0);
   const [fadeOut, setFadeOut] = useState(false);
 
@@ -215,13 +217,16 @@ export default function TutorialOverlay() {
   }, [dismissTutorial]);
 
   const next = useCallback(() => {
-    if (scene < SCENES.length - 1) {
-      setScene(s => s + 1);
+    const cur = sceneRef.current;
+    if (cur < SCENES.length - 1) {
+      const next = cur + 1;
+      sceneRef.current = next;
+      setScene(next);
       sceneStartRef.current = performance.now() - startTsRef.current;
     } else {
       dismiss();
     }
-  }, [scene, dismiss]);
+  }, [dismiss]);
 
   // Keyboard handler
   useEffect(() => {
@@ -244,13 +249,17 @@ export default function TutorialOverlay() {
       const elapsed = ts - startTsRef.current;
       const sceneElapsed = elapsed - sceneStartRef.current;
 
-      // Auto-advance
+      // Auto-advance using ref — no stale closure issue
       if (sceneElapsed > SCENE_HOLD_MS) {
         sceneStartRef.current = elapsed;
-        setScene(prev => {
-          if (prev >= SCENES.length - 1) { dismiss(); return prev; }
-          return prev + 1;
-        });
+        const cur = sceneRef.current;
+        if (cur >= SCENES.length - 1) {
+          dismiss();
+        } else {
+          const nxt = cur + 1;
+          sceneRef.current = nxt;
+          setScene(nxt);
+        }
       }
 
       const ctx = canvas.getContext('2d');
@@ -262,19 +271,19 @@ export default function TutorialOverlay() {
       ctx.fillStyle = '#080610';
       ctx.fillRect(0, 0, w, h);
 
-      // Scene draw
+      // Draw current scene using ref (stable, no closure capture of state)
       const t = elapsed * 0.001;
-      setScene(s => { SCENES[s]?.draw(ctx, w, h, t); return s; });
+      SCENES[sceneRef.current]?.draw(ctx, w, h, t);
 
       // Cross-fade overlay at scene boundaries
       const sceneProg = sceneElapsed / SCENE_HOLD_MS;
       if (sceneProg > 0.85) {
         const fadeAlpha = (sceneProg - 0.85) / 0.15;
-        ctx.fillStyle = `rgba(8,6,16,${fadeAlpha * 0.8})`;
+        ctx.fillStyle = `rgba(8,6,16,${(fadeAlpha * 0.8).toFixed(3)})`;
         ctx.fillRect(0, 0, w, h);
       } else if (sceneProg < 0.08) {
         const fadeAlpha = 1 - sceneProg / 0.08;
-        ctx.fillStyle = `rgba(8,6,16,${fadeAlpha * 0.8})`;
+        ctx.fillStyle = `rgba(8,6,16,${(fadeAlpha * 0.8).toFixed(3)})`;
         ctx.fillRect(0, 0, w, h);
       }
 
@@ -282,7 +291,8 @@ export default function TutorialOverlay() {
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [dismiss]); // eslint-disable-line react-hooks/exhaustive-deps — intentional: scene changes re-trigger draw via setScene callback
+    // dismiss is stable (useCallback with stable dep); RAF loop uses refs, no re-registration needed
+  }, [dismiss]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Canvas resize
   useEffect(() => {
@@ -301,7 +311,7 @@ export default function TutorialOverlay() {
 
   return (
     <div
-      className={`absolute inset-0 z-50 flex flex-col overflow-hidden transition-opacity duration-500 ${fadeOut ? 'opacity-0' : 'opacity-100'}`}
+      className={`fixed inset-0 z-50 flex flex-col overflow-hidden transition-opacity duration-500 ${fadeOut ? 'opacity-0' : 'opacity-100'}`}
       onClick={next}
     >
       {/* Canvas background */}

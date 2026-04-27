@@ -69,6 +69,8 @@ const POI_TYPES: WorldObjectType[] = [
   'poi_wrecked_cart',
   'poi_standing_stone',
   'poi_monster_lair',
+  'poi_watchtower',
+  'poi_stockade_ruins',
 ];
 
 /** Deterministic wilderness POIs merged into chunk object lists. */
@@ -126,8 +128,10 @@ export function mergeWildernessPoisIntoChunk(
         break;
       }
     }
-  } else if (roll < 0.78) kind = 'poi_standing_stone';
-  else kind = 'poi_monster_lair';
+  } else if (roll < 0.67) kind = 'poi_standing_stone';
+  else if (roll < 0.78) kind = 'poi_monster_lair';
+  else if (roll < 0.89) kind = 'poi_watchtower';
+  else kind = 'poi_stockade_ruins';
 
   if (kind === 'poi_monster_lair') {
     let found = false;
@@ -137,10 +141,21 @@ export function mergeWildernessPoisIntoChunk(
         const wyy = oy + tyi + dy;
         const c = tileAt(tiles, ox, oy, wxx, wyy);
         if (c === T.RUINS || c === T.HILL) {
-          wx = wxx;
-          wy = wyy;
-          found = true;
-          break;
+          wx = wxx; wy = wyy; found = true; break;
+        }
+      }
+    }
+  }
+
+  // Watchtowers prefer hill tiles for maximum drama
+  if (kind === 'poi_watchtower') {
+    let found = false;
+    for (let dy = -10; dy <= 10 && !found; dy++) {
+      for (let dx = -10; dx <= 10; dx++) {
+        const wxx = ox + txi + dx;
+        const wyy = oy + tyi + dy;
+        if (tileAt(tiles, ox, oy, wxx, wyy) === T.HILL) {
+          wx = wxx; wy = wyy; found = true; break;
         }
       }
     }

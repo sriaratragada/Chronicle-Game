@@ -2,10 +2,12 @@ import {
   LOCATION_COORDS,
   MAP_W,
   MAP_H,
+  CHUNK_SIZE,
   ensureRoads,
   getContinentAt,
   getSettlementMeta,
   type ContinentId,
+  type WorldObject,
 } from './mapGenerator';
 import { mergeHamletSpurRoadsIntoChunk, type HamletPoint } from './settlementLayout';
 
@@ -174,4 +176,18 @@ export function isHamletId(id: string): boolean {
 export function mergeHamletChunkRoads(cx: number, cy: number, roads: Uint8Array): void {
   const pts: HamletPoint[] = getHamlets().map(h => ({ x: h.x, y: h.y, id: h.id }));
   mergeHamletSpurRoadsIntoChunk(cx, cy, roads, pts);
+}
+
+/** Emit a poi_farmstead WorldObject for each hamlet that falls within this chunk. */
+export function mergeHamletStructuresIntoChunk(cx: number, cy: number, out: WorldObject[]): void {
+  const ox = cx * CHUNK_SIZE;
+  const oy = cy * CHUNK_SIZE;
+  for (const h of getHamlets()) {
+    if (h.x < ox || h.x >= ox + CHUNK_SIZE || h.y < oy || h.y >= oy + CHUNK_SIZE) continue;
+    const poiId = `farmstead_${h.id}`;
+    if (out.some(o => o.poiId === poiId)) continue;
+    // variant 0–3 drives distinct visual layouts in the renderer
+    const variant = Math.floor(hash(h.x, h.y, 9) * 4);
+    out.push({ x: h.x, y: h.y, type: 'poi_farmstead', variant, poiId });
+  }
 }

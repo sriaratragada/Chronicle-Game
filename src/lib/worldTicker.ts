@@ -479,7 +479,7 @@ function runWorldTickPipeline(): void {
       runWorldTickPhaseB(scratch, latest);
       applyWorldTickPatch(scratch);
 
-      if (scratch.newWorldTime % 100 === 0 && scratch.state.phase === 'playing') {
+      if (scratch.newWorldTime % 60 === 0 && scratch.state.phase === 'playing') {
         const px = latest.playerX;
         const py = latest.playerY;
         const wt = scratch.newWorldTime;

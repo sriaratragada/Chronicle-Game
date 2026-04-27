@@ -7,7 +7,7 @@ import {
   isSettlementLocalRoad,
   getSettlementSidewalkPositions,
 } from './settlementLayout';
-import { mergeHamletChunkRoads, invalidateHamletCache } from './hamlets';
+import { mergeHamletChunkRoads, mergeHamletStructuresIntoChunk, invalidateHamletCache } from './hamlets';
 import { mergeWildernessPoisIntoChunk, invalidateWildernessCaches } from './wildernessPoi';
 
 // ── Value noise ────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ export type WorldObjectType =
   | 'campfire' | 'market_stall' | 'ruins_pillar' | 'stone_wall'
   | 'stone_circle' | 'hut' | 'well' | 'shrine' | 'gate' | 'fence'
   | 'poi_lakeshore' | 'poi_chapel' | 'poi_knight_camp' | 'poi_wrecked_cart' | 'poi_standing_stone' | 'poi_monster_lair'
-  | 'poi_road_inn';
+  | 'poi_road_inn' | 'poi_farmstead' | 'poi_watchtower' | 'poi_stockade_ruins';
 
 export interface WorldObject {
   x: number; y: number;
@@ -525,6 +525,7 @@ function generateChunk(cx: number, cy: number): ChunkData {
   // ── Objects ──
   generateChunkObjects(cx, cy, tiles, roads, nearby, objects);
   mergeWildernessPoisIntoChunk(cx, cy, tiles, roads, objects);
+  mergeHamletStructuresIntoChunk(cx, cy, objects);
 
   // ── Entities ──
   generateChunkEntities(cx, cy, tiles, roads, nearby, entities);

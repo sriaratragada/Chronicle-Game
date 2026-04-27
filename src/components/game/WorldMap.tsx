@@ -29,6 +29,9 @@ const OBJ_COLORS: Record<WorldObjectType, [number, number, number]> = {
   poi_standing_stone: [110, 110, 130],
   poi_monster_lair: [90, 40, 90],
   poi_road_inn: [160, 120, 70],
+  poi_farmstead: [176, 154, 108],
+  poi_watchtower: [122, 114, 96],
+  poi_stockade_ruins: [106, 88, 64],
 };
 
 const ENTITY_COLORS: Record<AmbientEntityType, string> = {
@@ -228,6 +231,96 @@ function drawObject(ctx: CanvasRenderingContext2D, obj: WorldObject, sx: number,
       ctx.fillRect(-z * 0.5, -z * 1.6, z * 1.0, z * 0.35);
       break;
     }
+    case 'poi_farmstead': {
+      // Farmhouse walls + pitched roof
+      ctx.fillStyle = '#b09a6c';
+      ctx.fillRect(-z * 1.4, -z * 0.9, z * 2.8, z * 1.5);
+      ctx.fillStyle = '#7a4a28';
+      ctx.beginPath();
+      ctx.moveTo(-z * 1.75, -z * 0.9);
+      ctx.lineTo(0, -z * 2.1);
+      ctx.lineTo(z * 1.75, -z * 0.9);
+      ctx.closePath();
+      ctx.fill();
+      // Door
+      ctx.fillStyle = '#5a3818';
+      ctx.fillRect(-z * 0.22, z * 0.1, z * 0.44, z * 0.5);
+      // Fence posts
+      ctx.fillStyle = '#c8a870';
+      for (let fi = -2; fi <= 2; fi++) {
+        ctx.fillRect(fi * z * 0.75 - z * 0.09, z * 0.75, z * 0.18, z * 0.42);
+      }
+      // Small field patch to the right
+      ctx.fillStyle = 'rgba(90,130,50,0.32)';
+      ctx.fillRect(z * 1.55, -z * 0.3, z * 1.9, z * 1.4);
+      // Row lines in field
+      ctx.strokeStyle = 'rgba(60,100,30,0.4)';
+      ctx.lineWidth = z * 0.07;
+      for (let ri = 0; ri < 3; ri++) {
+        const fy = -z * 0.1 + ri * z * 0.42;
+        ctx.beginPath();
+        ctx.moveTo(z * 1.6, fy);
+        ctx.lineTo(z * 3.35, fy);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'poi_watchtower': {
+      // Stone base
+      ctx.fillStyle = '#857a68';
+      ctx.fillRect(-z * 0.9, z * 0.05, z * 1.8, z * 0.32);
+      // Tower body
+      ctx.fillStyle = '#7a7060';
+      ctx.fillRect(-z * 0.65, -z * 2.85, z * 1.3, z * 2.9);
+      // Battlements — 3 merlons
+      ctx.fillStyle = '#6a6050';
+      for (let bi = -1; bi <= 1; bi++) {
+        ctx.fillRect(bi * z * 0.42 - z * 0.19, -z * 3.35, z * 0.36, z * 0.55);
+      }
+      // Arrow slit
+      ctx.fillStyle = '#1e1810';
+      ctx.fillRect(-z * 0.1, -z * 1.85, z * 0.2, z * 0.55);
+      // Torch flicker (warm dot at top)
+      ctx.fillStyle = 'rgba(255,180,60,0.55)';
+      ctx.beginPath();
+      ctx.arc(0, -z * 3.05, z * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'poi_stockade_ruins': {
+      // Partial ring of weathered log posts with gaps
+      ctx.lineWidth = z * 0.3;
+      for (let pi = 0; pi < 8; pi++) {
+        if (pi === 2 || pi === 5) continue; // deliberate gaps
+        const ang = (pi / 8) * Math.PI * 2;
+        const r = z * 1.65;
+        const bx = Math.cos(ang) * r;
+        const by = Math.sin(ang) * r;
+        const ht = z * (0.85 + (pi % 3) * 0.28);
+        ctx.strokeStyle = pi % 2 === 0 ? '#6a5030' : '#7a6040';
+        ctx.beginPath();
+        ctx.moveTo(bx, by + z * 0.18);
+        ctx.lineTo(bx, by - ht);
+        ctx.stroke();
+        // Post cap
+        ctx.fillStyle = '#7a6040';
+        ctx.beginPath();
+        ctx.arc(bx, by - ht, z * 0.17, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Charred central scar
+      ctx.fillStyle = 'rgba(32,22,14,0.6)';
+      ctx.beginPath();
+      ctx.arc(0, 0, z * 0.58, 0, Math.PI * 2);
+      ctx.fill();
+      // Ash ring
+      ctx.strokeStyle = 'rgba(100,90,80,0.35)';
+      ctx.lineWidth = z * 0.12;
+      ctx.beginPath();
+      ctx.arc(0, 0, z * 0.82, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
     default:
       ctx.fillStyle = col; ctx.fillRect(-z * 0.7, -z * 0.7, z * 1.4, z * 1.4);
   }
@@ -343,19 +436,18 @@ function drawHumanPlayer(ctx: CanvasRenderingContext2D, sx: number, sy: number, 
   ctx.strokeStyle = 'rgba(200,170,80,0.25)'; ctx.lineWidth = 1; ctx.stroke();
 }
 
-/** Layered arcs + destination-out — much cheaper per frame than createRadialGradient. */
+/** Smooth radial gradient fog reveal — fully clear at center, fades over outer 55% of radius. */
 function punchVisionHole(fogCtx: CanvasRenderingContext2D, lx: number, ly: number, outerPx: number) {
-  fogCtx.save();
-  fogCtx.globalCompositeOperation = 'destination-out';
-  const rings = [1.0, 0.74, 0.5, 0.28];
-  const alphas = [0.18, 0.22, 0.28, 0.42];
-  for (let i = 0; i < rings.length; i++) {
-    fogCtx.fillStyle = `rgba(0,0,0,${alphas[i]})`;
-    fogCtx.beginPath();
-    fogCtx.arc(lx, ly, outerPx * rings[i]!, 0, Math.PI * 2);
-    fogCtx.fill();
-  }
-  fogCtx.restore();
+  const grad = fogCtx.createRadialGradient(lx, ly, 0, lx, ly, outerPx);
+  grad.addColorStop(0,    'rgba(0,0,0,1)');
+  grad.addColorStop(0.45, 'rgba(0,0,0,1)');
+  grad.addColorStop(0.75, 'rgba(0,0,0,0.6)');
+  grad.addColorStop(0.9,  'rgba(0,0,0,0.15)');
+  grad.addColorStop(1,    'rgba(0,0,0,0)');
+  fogCtx.fillStyle = grad;
+  fogCtx.beginPath();
+  fogCtx.arc(lx, ly, outerPx, 0, Math.PI * 2);
+  fogCtx.fill();
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
@@ -490,41 +582,22 @@ export default function WorldMap() {
       const ctx = canvas!.getContext('2d');
       if (!ctx) { animId = requestAnimationFrame(render); return; }
 
-      // #region agent log
-      const prevTs = lastRafTsRef.current;
-      lastRafTsRef.current = timestamp;
-      if (prevTs > 0) {
-        const gap = timestamp - prevTs;
-        if (gap > 38) {
-          fetch('http://127.0.0.1:7891/ingest/68e880b8-e871-43be-946d-757508d96764', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a7e92f' },
-            body: JSON.stringify({
-              sessionId: 'a7e92f',
-              hypothesisId: 'B',
-              location: 'WorldMap.tsx:render',
-              message: 'raf_frame_gap_ms',
-              data: { gapMs: Math.round(gap * 10) / 10 },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-        }
-      }
-      // #endregion
-
       const { playerX, playerY, season, visitedLocations, nearestLocation, zoom, canvasW, canvasH } = stateRef.current;
 
       if (canvas!.width !== canvasW || canvas!.height !== canvasH) {
         canvas!.width = canvasW; canvas!.height = canvasH;
       }
 
-      // Smooth camera
+      // Smooth camera — frame-rate independent exponential lerp
+      const prevTs = lastRafTsRef.current;
+      lastRafTsRef.current = timestamp;
+      const dt = prevTs > 0 ? Math.min(timestamp - prevTs, 80) : 16;
+      const lerp = 1 - Math.exp(-8 * dt / 1000);
       if (!visRef.current.initialised) {
         visRef.current.x = playerX; visRef.current.y = playerY; visRef.current.initialised = true;
       } else {
-        const LERP = 0.18;
-        visRef.current.x += (playerX - visRef.current.x) * LERP;
-        visRef.current.y += (playerY - visRef.current.y) * LERP;
+        visRef.current.x += (playerX - visRef.current.x) * lerp;
+        visRef.current.y += (playerY - visRef.current.y) * lerp;
       }
       const visX = visRef.current.x, visY = visRef.current.y;
 

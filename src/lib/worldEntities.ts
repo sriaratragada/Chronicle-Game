@@ -15,6 +15,7 @@ import { getSettlementSidewalkPositions, getSettlementLayoutCenter } from './set
 import { buildCaravanRuns } from './tradeRoutes';
 import { getHamlets, type HamletArchetype } from './hamlets';
 import { INITIAL_NPCS } from './gameData';
+import type { RegionalModifiers } from './regionalState';
 
 export type EntityKind =
   | 'boat' | 'cave_entrance' | 'resource_tree' | 'resource_rock' | 'resource_iron'
@@ -432,6 +433,7 @@ function tickOneSettlementOrHamletNpc(
   dayPhase: import('./gameTypes').DayNightPhase,
   worldTime: number,
   h: (a: number, b: number) => number,
+  regional?: RegionalModifiers,
 ): void {
   const homeX = (e.data.homeX as number) ?? e.x;
   const homeY = (e.data.homeY as number) ?? e.y;
@@ -461,6 +463,31 @@ function tickOneSettlementOrHamletNpc(
       ty = homeY;
     }
   }
+  // Crisis goal overrides — shift NPC movement targets under severe regional conditions
+  if (regional) {
+    const job = String(e.data.job ?? '');
+    // High bandit pressure → farmers and merchants shelter near home
+    if (regional.banditPressure > 0.5 && (job === 'farmer' || job === 'merchant')) {
+      tx = homeX + Math.round((h(e.x, worldTime + 5) - 0.5) * 2);
+      ty = homeY + Math.round((h(e.y, worldTime + 6) - 0.5) * 2);
+    }
+    // High war tension → guards and sellswords patrol wider perimeter
+    if (regional.warTension > 0.6 && (job === 'guard' || job === 'sellsword')) {
+      const hub = e.kind === 'settlement_npc' && e.data.locationId
+        ? getSettlementLayoutCenter(String(e.data.locationId))
+        : { x: homeX, y: homeY };
+      tx = hub.x + Math.round((h(worldTime + 7, e.x) - 0.5) * 28);
+      ty = hub.y + Math.round((h(worldTime + 8, e.y) - 0.5) * 28);
+    }
+    // Severe drought → farmers work through dusk instead of returning home
+    if (regional.drought > 0.6 && job === 'farmer' && dayPhase === 'dusk') {
+      const hub = e.kind === 'settlement_npc' && e.data.locationId
+        ? getSettlementLayoutCenter(String(e.data.locationId))
+        : { x: homeX, y: homeY };
+      tx = hub.x + Math.round((h(worldTime, e.x) - 0.5) * 18);
+      ty = hub.y + Math.round((h(worldTime, e.y + 3) - 0.5) * 18);
+    }
+  }
   if (Math.abs(tx - e.x) + Math.abs(ty - e.y) > 48) return;
   const dx = Math.sign(tx - e.x);
   const dy = Math.sign(ty - e.y);
@@ -473,7 +500,11 @@ function tickOneSettlementOrHamletNpc(
 }
 
 /** Settlement / hamlet NPCs: round-robin a fixed budget per tick to avoid getTileAt storms. */
-export function tickWorldNpcSchedules(dayPhase: import('./gameTypes').DayNightPhase, worldTime: number): void {
+export function tickWorldNpcSchedules(
+  dayPhase: import('./gameTypes').DayNightPhase,
+  worldTime: number,
+  regional?: RegionalModifiers,
+): void {
   const h = (a: number, b: number) => {
     let x = (a * 374761393 + b * 668265263 + worldTime) & 0xffffffff;
     x = ((x ^ (x >> 13)) * 1274126177) & 0xffffffff;
@@ -484,7 +515,7 @@ export function tickWorldNpcSchedules(dayPhase: import('./gameTypes').DayNightPh
   const budget = Math.min(NPC_SCHEDULE_BUDGET, n);
   const start = npcScheduleCursor % n;
   for (let i = 0; i < budget; i++) {
-    tickOneSettlementOrHamletNpc(scheduleNpcBucket[(start + i) % n]!, dayPhase, worldTime, h);
+    tickOneSettlementOrHamletNpc(scheduleNpcBucket[(start + i) % n]!, dayPhase, worldTime, h, regional);
   }
   npcScheduleCursor = (start + budget) % n;
 }

@@ -382,6 +382,7 @@ export default function WorldMap() {
     nearestLocation: null as string | null,
     zoom: 7,
     canvasW: 800, canvasH: 600,
+    clearedCaves: {} as Record<string, number>,
   });
 
   const playerX = useGameStore(s => s.playerX);
@@ -397,11 +398,12 @@ export default function WorldMap() {
   const setOverlay = useGameStore(s => s.setOverlay);
   const overlay = useGameStore(s => s.overlay);
   const phase = useGameStore(s => s.phase);
+  const clearedCaves = useGameStore(s => s.clearedCaves);
 
   useLayoutEffect(() => {
     const prev = stateRef.current;
     const seasonChanged = prev.season !== season;
-    stateRef.current = { ...prev, playerX, playerY, season, dayNightPhase, visitedLocations, nearestLocation };
+    stateRef.current = { ...prev, playerX, playerY, season, dayNightPhase, visitedLocations, nearestLocation, clearedCaves };
     if (seasonChanged) chunksRef.current.clear();
   });
 
@@ -619,9 +621,11 @@ export default function WorldMap() {
                   ctx.fillStyle = '#8a5a30'; ctx.fillRect(-z * 0.8, -z * 0.4, z * 1.6, z * 0.8); ctx.fillRect(-z * 1.0, -z * 0.8, z * 0.5, z * 0.5);
                   break;
                 case 'cave_entrance': {
-                  // Distinct "maw" silhouette + teal rim so caves read as dungeons, not generic dots
+                  // Maw silhouette — teal rim for uncleared, grey/dim for cleared
                   const s = z * 1.35;
-                  ctx.strokeStyle = 'rgba(72, 200, 190, 0.92)';
+                  const isCleared = Boolean(stateRef.current.clearedCaves[we.id]);
+                  ctx.globalAlpha = isCleared ? 0.3 : 1;
+                  ctx.strokeStyle = isCleared ? 'rgba(140, 140, 140, 0.7)' : 'rgba(72, 200, 190, 0.92)';
                   ctx.lineWidth = Math.max(1.2, z * 0.22);
                   ctx.beginPath();
                   ctx.moveTo(0, s * 0.35);
@@ -645,6 +649,7 @@ export default function WorldMap() {
                   ctx.fillRect(-s * 0.12, -s * 0.92, s * 0.1, s * 0.28);
                   ctx.fillRect(0, -s * 0.88, s * 0.11, s * 0.24);
                   ctx.fillRect(s * 0.18, -s * 0.85, s * 0.09, s * 0.22);
+                  ctx.globalAlpha = 1;
                   break;
                 }
                 case 'wolf':

@@ -8,6 +8,7 @@ import { getWeatherIcon } from '@/lib/weatherSystem';
 import { getTimeString } from '@/lib/timeSystem';
 import { getTotalArmor, getWeaponDamage } from '@/lib/craftingSystem';
 import { ITEMS } from '@/lib/items';
+import WorldConditions from '@/components/game/WorldConditions';
 
 const DAY_ICONS: Record<string, string> = { dawn: '🌅', day: '☀️', dusk: '🌇', night: '🌙' };
 const CONTINENT_NAMES: Record<string, string> = { auredia: 'Auredia', trivalen: 'Trivalen', uloren: 'Uloren' };
@@ -37,6 +38,7 @@ export default function HudBar() {
   const phase = useGameStore(s => s.phase);
   const mounted = useGameStore(s => s.mounted);
   const inventory = useGameStore(s => s.inventory);
+  const regionalModifiers = useGameStore(s => s.regionalModifiers);
 
   const continent = useGameStore(s => getContinentAt(s.playerX, s.playerY));
   const weatherStateHere = useGameStore(s => {
@@ -215,6 +217,7 @@ export default function HudBar() {
             {phase === 'sailing' && <span className="font-mono-game text-[9px] text-blue-400 border-l border-gold/10 pl-3">⛵ SAILING</span>}
             {phase === 'battle' && <span className="font-mono-game text-[9px] text-rose-400 border-l border-gold/10 pl-3">⚔ DUEL</span>}
             {mounted === 'horse' && <span className="font-mono-game text-[9px] text-amber-400 border-l border-gold/10 pl-3">🐎 MOUNTED</span>}
+            <WorldConditions modifiers={regionalModifiers} />
             </div>{/* end info row */}
           </div>{/* end left col */}
 

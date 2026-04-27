@@ -29,6 +29,7 @@ export default function Minimap() {
   const playerY = useGameStore(s => s.playerY);
   const visitedLocations = useGameStore(s => s.visitedLocations);
   const facingDir = useGameStore(s => s.facingDir);
+  const clearedCaves = useGameStore(s => s.clearedCaves);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -133,17 +134,26 @@ export default function Minimap() {
       if (ent.kind === 'cave_entrance') {
         ctx.save();
         ctx.translate(esx, esy);
-        ctx.fillStyle = 'rgba(48, 190, 175, 0.95)';
-        ctx.strokeStyle = 'rgba(160, 240, 230, 0.85)';
-        ctx.lineWidth = 0.45;
-        ctx.beginPath();
-        ctx.moveTo(0, 2.2);
-        ctx.lineTo(-2.2, 0);
-        ctx.lineTo(0, -2.2);
-        ctx.lineTo(2.2, 0);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+        if (clearedCaves[ent.id]) {
+          // Grey X — dungeon already cleared
+          ctx.strokeStyle = 'rgba(120, 120, 120, 0.55)';
+          ctx.lineWidth = 0.9;
+          ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(2, 2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(-2, 2); ctx.stroke();
+        } else {
+          // Teal diamond — uncleared dungeon
+          ctx.fillStyle = 'rgba(48, 190, 175, 0.95)';
+          ctx.strokeStyle = 'rgba(160, 240, 230, 0.85)';
+          ctx.lineWidth = 0.45;
+          ctx.beginPath();
+          ctx.moveTo(0, 2.2);
+          ctx.lineTo(-2.2, 0);
+          ctx.lineTo(0, -2.2);
+          ctx.lineTo(2.2, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
         ctx.restore();
         continue;
       }
@@ -176,7 +186,7 @@ export default function Minimap() {
     ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.stroke();
 
-  }, [playerX, playerY, visitedLocations, facingDir]);
+  }, [playerX, playerY, visitedLocations, facingDir, clearedCaves]);
 
   return (
     <div className="absolute top-3 right-3 z-30 pointer-events-auto">

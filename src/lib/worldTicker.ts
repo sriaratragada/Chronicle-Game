@@ -289,7 +289,7 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
   if (newWorldTime % 2 === 0) {
     tickCaravanMovement();
   }
-  tickWorldNpcSchedules(newDayNight, newWorldTime);
+  tickWorldNpcSchedules(newDayNight, newWorldTime, scratch.newRegional);
 
   for (const e of getEntitiesByKind('cooking_fire')) {
     if (Number(e.data.expiresAt ?? 0) < newWorldTime) {

@@ -24,6 +24,8 @@ import RealmAtlasPanel, { prefetchAtlasTerrainCache } from '@/components/game/Re
 import CampStashPanel from '@/components/game/CampStashPanel';
 import BattleScreen from '@/components/game/BattleScreen';
 import ArcanePanel from '@/components/game/ArcanePanel';
+import EscortTracker from '@/components/game/EscortTracker';
+import SailingOverlay from '@/components/game/SailingOverlay';
 
 // Module-level components so they are never recreated inside a render
 
@@ -174,6 +176,8 @@ export default function GameScreen() {
           </p>
         </div>
       )}
+      <EscortTracker />
+      <SailingOverlay />
       {phase === 'dungeon' ? (
         <DungeonView />
       ) : (

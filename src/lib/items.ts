@@ -83,6 +83,9 @@ export const ITEMS: Record<string, ItemDef> = {
   portable_stove: { id: 'portable_stove', name: 'Portable Stove', icon: '🫕', type: 'tool', rarity: 'uncommon', stackable: false, maxStack: 1, description: 'Cook anywhere without a campfire.', value: 45 },
   void_sigil: { id: 'void_sigil', name: 'Void Sigil', icon: '🜁', type: 'misc', rarity: 'rare', stackable: true, maxStack: 5, description: 'A proof-token from the deep places. Factions pay well for these.', value: 80 },
 
+  // ── Books ──
+  realm_codex: { id: 'realm_codex', name: 'Realm Codex', icon: '📖', type: 'misc', rarity: 'uncommon', stackable: false, maxStack: 1, description: 'An in-depth guide to the world of Aethermoor. Contains lore, navigation tips, and survival guidance.', value: 0 },
+
   // ── Arcane ──
   mana_potion:       { id: 'mana_potion', name: 'Mana Draught', icon: '🔮', type: 'potion', rarity: 'uncommon', stackable: true, maxStack: 5, description: 'Restores 30 mana.', value: 25 },
   scroll_flame_bolt: { id: 'scroll_flame_bolt', name: 'Scroll: Flame Bolt', icon: '📜', type: 'misc', rarity: 'uncommon', stackable: true, maxStack: 3, description: 'Teaches the Flame Bolt spell. Single use.', value: 35 },

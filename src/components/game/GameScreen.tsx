@@ -26,6 +26,7 @@ import BattleScreen from '@/components/game/BattleScreen';
 import ArcanePanel from '@/components/game/ArcanePanel';
 import EscortTracker from '@/components/game/EscortTracker';
 import SailingOverlay from '@/components/game/SailingOverlay';
+import CodexPanel from '@/components/game/CodexPanel';
 
 // Module-level components so they are never recreated inside a render
 
@@ -154,6 +155,7 @@ export default function GameScreen() {
   const phase = useGameStore(s => s.phase);
   const startGame = useGameStore(s => s.startGame);
   const tutorialObjective = useGameStore(s => s.tutorialObjective);
+  const adminMode = useGameStore(s => s.adminMode);
 
   useEffect(() => {
     if (atlasPrefetchStarted.current) return;
@@ -174,6 +176,11 @@ export default function GameScreen() {
           <p className="font-mono-game text-[10px] text-gold/90 text-center leading-snug">
             {tutorialLines[tutorialObjective]}
           </p>
+        </div>
+      )}
+      {adminMode && phase !== 'title' && phase !== 'dead' && (
+        <div className="absolute top-2 right-2 z-[60] px-2 py-1 rounded border border-emerald-400/40 bg-emerald-950/80 pointer-events-none">
+          <p className="font-mono text-[9px] text-emerald-400 tracking-wider">⚡ ADMIN</p>
         </div>
       )}
       <EscortTracker />
@@ -204,6 +211,7 @@ export default function GameScreen() {
       <RealmAtlasPanel />
       <CampStashPanel />
       <ArcanePanel />
+      <CodexPanel />
       {phase !== 'dungeon' && <DialogueOverlay />}
       {phase === 'dead' && <DeathScreen onRestart={startGame} />}
     </div>

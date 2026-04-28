@@ -82,19 +82,26 @@ export default function TitleScreen() {
   const startGame = useGameStore(s => s.startGame);
   const bootError = useGameStore(s => s.bootError);
   const clearBootError = useGameStore(s => s.clearBootError);
+  const toggleAdminMode = useGameStore(s => s.toggleAdminMode);
+  const adminMode = useGameStore(s => s.adminMode);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        toggleAdminMode();
+        return;
+      }
+      if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
       startGame();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [startGame]);
+  }, [startGame, toggleAdminMode]);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -181,6 +188,15 @@ export default function TitleScreen() {
           Enter the World
         </motion.button>
         <p className="font-mono text-[10px] tracking-wider text-mist/40">Enter or Space</p>
+        {adminMode && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mt-2 px-3 py-1 border border-emerald-400/50 bg-emerald-900/30 rounded"
+          >
+            <p className="font-mono text-[10px] tracking-widest text-emerald-400 uppercase">⚡ Admin Mode Active — Creative Speed + Unlimited Fast Travel</p>
+          </motion.div>
+        )}
       </motion.div>
     </div>
   );

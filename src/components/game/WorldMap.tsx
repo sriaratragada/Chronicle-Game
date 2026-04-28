@@ -1,4 +1,4 @@
-import { useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import { useEffect, useRef, useLayoutEffect, useCallback, useState } from 'react';
 import { useGameStore } from '@/lib/gameStore';
 import {
   MAP_W, MAP_H, CHUNK_SIZE, NUM_CHUNKS_X, NUM_CHUNKS_Y,
@@ -7,7 +7,7 @@ import {
   WorldObject, AmbientEntity,
   WorldObjectType, AmbientEntityType,
 } from '@/lib/mapGenerator';
-import { getEntitiesInChunk, WorldEntity } from '@/lib/worldEntities';
+import { getEntitiesInChunk, getEntitiesNear, WorldEntity } from '@/lib/worldEntities';
 import { LOCATIONS } from '@/lib/gameData';
 import { Season } from '@/lib/gameTypes';
 
@@ -696,6 +696,9 @@ export default function WorldMap() {
     clearedCaves: {} as Record<string, number>,
   });
 
+  // ── Proximity interaction tooltip ──────────────────────────────────────────
+  const [nearbyAction, setNearbyAction] = useState<{ icon: string; label: string } | null>(null);
+
   const playerX = useGameStore(s => s.playerX);
   const playerY = useGameStore(s => s.playerY);
   const season = useGameStore(s => s.season);
@@ -790,6 +793,27 @@ export default function WorldMap() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [setOverlay, overlay]);
+
+  // ── Proximity interaction tooltip poll ───────────────────────────────────
+  useEffect(() => {
+    const RESOURCE_ACTIONS: Partial<Record<string, { icon: string; label: string }>> = {
+      resource_tree:  { icon: '🪓', label: 'E — Chop Wood' },
+      resource_rock:  { icon: '⛏️', label: 'E — Mine Stone' },
+      resource_iron:  { icon: '⛏️', label: 'E — Mine Iron Ore' },
+      resource_herb:  { icon: '🌿', label: 'E — Gather Herbs' },
+      resource_berry: { icon: '🫐', label: 'E — Pick Berries' },
+    };
+    const iv = setInterval(() => {
+      const { playerX: px, playerY: py } = stateRef.current;
+      const nearby = getEntitiesNear(px, py, 4).find(e => e.kind in RESOURCE_ACTIONS);
+      const next = nearby ? RESOURCE_ACTIONS[nearby.kind] ?? null : null;
+      setNearbyAction(prev => {
+        if (prev?.label === next?.label) return prev;
+        return next;
+      });
+    }, 150);
+    return () => clearInterval(iv);
+  }, []);
 
   // ── Render loop ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1026,9 +1050,102 @@ export default function WorldMap() {
                   ctx.fillStyle = '#3a5048';
                   ctx.fillRect(-z * 0.32, z * 0.08, z * 0.64, z * 0.52);
                   break;
+                case 'resource_tree': {
+                  // Trunk
+                  ctx.fillStyle = '#5a3a18';
+                  ctx.fillRect(-z * 0.22, z * 0.1, z * 0.44, z * 0.85);
+                  // Canopy layers (3 overlapping circles for depth)
+                  ctx.fillStyle = '#2a5a1a';
+                  ctx.beginPath(); ctx.arc(0, -z * 0.55, z * 1.05, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#348428';
+                  ctx.beginPath(); ctx.arc(-z * 0.35, -z * 0.3, z * 0.75, 0, Math.PI * 2); ctx.fill();
+                  ctx.beginPath(); ctx.arc(z * 0.38, -z * 0.28, z * 0.7, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#46aa38';
+                  ctx.beginPath(); ctx.arc(0, -z * 0.72, z * 0.58, 0, Math.PI * 2); ctx.fill();
+                  // Highlight dot
+                  if (z >= 4) {
+                    ctx.globalAlpha = 0.35; ctx.fillStyle = '#80e060';
+                    ctx.beginPath(); ctx.arc(-z * 0.18, -z * 0.92, z * 0.22, 0, Math.PI * 2); ctx.fill();
+                    ctx.globalAlpha = 1;
+                  }
+                  break;
+                }
+                case 'resource_rock': {
+                  // Shadow
+                  ctx.globalAlpha = 0.22; ctx.fillStyle = '#000';
+                  ctx.beginPath(); ctx.ellipse(z * 0.1, z * 0.75, z * 1.0, z * 0.28, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+                  // Main boulder
+                  ctx.fillStyle = '#7a7870';
+                  ctx.beginPath(); ctx.moveTo(-z * 0.85, z * 0.65); ctx.lineTo(-z * 1.05, z * 0.0); ctx.lineTo(-z * 0.55, -z * 0.72); ctx.lineTo(z * 0.6, -z * 0.78); ctx.lineTo(z * 1.1, z * 0.05); ctx.lineTo(z * 0.8, z * 0.65); ctx.closePath(); ctx.fill();
+                  // Highlight face
+                  ctx.fillStyle = '#a0a098';
+                  ctx.beginPath(); ctx.moveTo(-z * 0.55, -z * 0.72); ctx.lineTo(z * 0.6, -z * 0.78); ctx.lineTo(z * 0.45, -z * 0.15); ctx.lineTo(-z * 0.4, -z * 0.1); ctx.closePath(); ctx.fill();
+                  // Crack line
+                  if (z >= 3) {
+                    ctx.strokeStyle = '#5a5850'; ctx.lineWidth = z * 0.12;
+                    ctx.beginPath(); ctx.moveTo(-z * 0.1, -z * 0.6); ctx.lineTo(z * 0.15, z * 0.1); ctx.lineTo(-z * 0.05, z * 0.45); ctx.stroke();
+                  }
+                  break;
+                }
+                case 'resource_iron': {
+                  // Shadow
+                  ctx.globalAlpha = 0.2; ctx.fillStyle = '#000';
+                  ctx.beginPath(); ctx.ellipse(0, z * 0.65, z * 0.85, z * 0.22, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+                  // Rock body with reddish-brown hue
+                  ctx.fillStyle = '#6a5040';
+                  ctx.beginPath(); ctx.moveTo(-z * 0.7, z * 0.6); ctx.lineTo(-z * 0.95, z * 0.0); ctx.lineTo(-z * 0.45, -z * 0.65); ctx.lineTo(z * 0.5, -z * 0.68); ctx.lineTo(z * 0.95, z * 0.0); ctx.lineTo(z * 0.65, z * 0.6); ctx.closePath(); ctx.fill();
+                  // Iron ore veins (orange-brown streaks)
+                  ctx.fillStyle = '#c06828';
+                  ctx.beginPath(); ctx.ellipse(-z * 0.15, -z * 0.18, z * 0.38, z * 0.18, -0.5, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#d47830';
+                  ctx.beginPath(); ctx.ellipse(z * 0.3, z * 0.1, z * 0.22, z * 0.12, 0.4, 0, Math.PI * 2); ctx.fill();
+                  // Highlight
+                  ctx.fillStyle = '#8a6858';
+                  ctx.beginPath(); ctx.moveTo(-z * 0.45, -z * 0.65); ctx.lineTo(z * 0.5, -z * 0.68); ctx.lineTo(z * 0.35, -z * 0.1); ctx.lineTo(-z * 0.3, -z * 0.05); ctx.closePath(); ctx.fill();
+                  break;
+                }
+                case 'resource_herb': {
+                  // Ground patch
+                  ctx.fillStyle = '#2a4a18';
+                  ctx.beginPath(); ctx.ellipse(0, z * 0.3, z * 0.9, z * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+                  // Stems + leaves
+                  ctx.strokeStyle = '#3a6a1a'; ctx.lineWidth = z * 0.14;
+                  const herbAngles = [-0.5, 0, 0.5, -0.25, 0.25];
+                  for (const ang of herbAngles) {
+                    ctx.beginPath();
+                    ctx.moveTo(ang * z * 0.8, z * 0.3);
+                    ctx.quadraticCurveTo(ang * z * 1.2, -z * 0.25, ang * z * 0.6, -z * 0.75);
+                    ctx.stroke();
+                  }
+                  // Flower tops
+                  ctx.fillStyle = '#80cc40';
+                  for (const ang of [-0.5, 0, 0.5]) {
+                    ctx.beginPath(); ctx.arc(ang * z * 0.6, -z * 0.75, z * 0.22, 0, Math.PI * 2); ctx.fill();
+                  }
+                  ctx.fillStyle = '#ffe060';
+                  ctx.beginPath(); ctx.arc(0, -z * 0.78, z * 0.12, 0, Math.PI * 2); ctx.fill();
+                  break;
+                }
+                case 'resource_berry': {
+                  // Bush body
+                  ctx.fillStyle = '#2a4a10';
+                  ctx.beginPath(); ctx.ellipse(0, 0, z * 0.95, z * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+                  ctx.fillStyle = '#387018';
+                  ctx.beginPath(); ctx.ellipse(-z * 0.32, -z * 0.2, z * 0.62, z * 0.5, -0.3, 0, Math.PI * 2); ctx.fill();
+                  ctx.beginPath(); ctx.ellipse(z * 0.32, -z * 0.18, z * 0.6, z * 0.48, 0.3, 0, Math.PI * 2); ctx.fill();
+                  // Berries
+                  const berryPositions = [[-0.5, -0.4], [0, -0.55], [0.5, -0.42], [-0.28, -0.12], [0.3, -0.1]];
+                  ctx.fillStyle = '#cc2040';
+                  for (const [bx, by] of berryPositions) {
+                    ctx.beginPath(); ctx.arc(bx * z, by * z, z * 0.2, 0, Math.PI * 2); ctx.fill();
+                  }
+                  ctx.fillStyle = '#ff4060';
+                  ctx.beginPath(); ctx.arc(-z * 0.5, -z * 0.45, z * 0.1, 0, Math.PI * 2); ctx.fill();
+                  break;
+                }
                 default:
                   if (we.kind.startsWith('resource_')) {
-                    ctx.fillStyle = we.kind === 'resource_tree' ? '#3a6a2a' : we.kind === 'resource_rock' ? '#7a7a7a' : we.kind === 'resource_iron' ? '#8a6644' : '#4a8a3a';
+                    ctx.fillStyle = '#4a8a3a';
                     ctx.beginPath(); ctx.arc(0, 0, z * 0.6, 0, Math.PI * 2); ctx.fill();
                   } else {
                     ctx.fillStyle = '#aaa'; ctx.beginPath(); ctx.arc(0, 0, z * 0.5, 0, Math.PI * 2); ctx.fill();
@@ -1251,6 +1368,14 @@ export default function WorldMap() {
         className="w-full h-full cursor-crosshair"
         style={{ imageRendering: 'pixelated' }}
       />
+      {nearbyAction && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div className="flex items-center gap-2 px-4 py-2 rounded border border-gold/35 bg-ink/90 backdrop-blur-sm">
+            <span className="text-base">{nearbyAction.icon}</span>
+            <span className="font-mono text-[11px] text-gold/90 tracking-wide">{nearbyAction.label}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

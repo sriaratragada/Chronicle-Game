@@ -182,7 +182,8 @@ export type OverlayType =
   | 'saveload'
   | 'fasttravel'
   | 'camp'
-  | 'arcane';
+  | 'arcane'
+  | 'codex';
 
 export type ItemType = 'tool' | 'weapon' | 'resource' | 'food' | 'armor' | 'misc' | 'potion' | 'trade_good';
 
@@ -351,4 +352,7 @@ export interface GameState {
 
   /** True on first new game — triggers cinematic tutorial overlay. */
   showTutorial: boolean;
+
+  /** Admin / developer mode — creative speed, unlimited fast travel. */
+  adminMode: boolean;
 }

@@ -107,6 +107,7 @@ function makeStarterInventory(): Inventory {
   inv = addToInventory(inv, 'bare_hands', 1);
   inv = addToInventory(inv, 'tent_kit', 1);
   inv = addToInventory(inv, 'realm_map', 1);
+  inv = addToInventory(inv, 'realm_codex', 1);
   const bh = inv.slots.findIndex(s => s?.itemId === 'bare_hands');
   if (bh >= 0) inv = equipItem(inv, bh);
   return inv;
@@ -327,6 +328,8 @@ function buildFreshPlayingStatePayload(): Partial<GameState> & { phase: 'playing
     synthesisCooldowns: {},
     marketSnapshots: [],
     lastArcTick: 0,
+    showTutorial: true,
+    adminMode: false,
   };
 }
 
@@ -368,6 +371,7 @@ interface GameStore extends GameState {
   giftNpc: (npcId: string, itemId: string) => void;
   castSpellAction: (spellId: string) => void;
   dismissTutorial: () => void;
+  toggleAdminMode: () => void;
 }
 
 const starterInv = makeStarterInventory();
@@ -439,6 +443,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   spellCooldowns: {},
   bootError: null,
   showTutorial: true,
+  adminMode: false,
 
   startGame: () => {
     const st = get();
@@ -478,6 +483,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   clearBootError: () => set({ bootError: null }),
   dismissTutorial: () => set({ showTutorial: false }),
+  toggleAdminMode: () => set(s => ({ adminMode: !s.adminMode })),
 
   setActiveSlot: (slot: number) => set({ activeSlot: slot }),
 
@@ -527,6 +533,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler studied the scroll and learned the spell: ${spellEntry.name}.`, type: 'action' };
       toast(`✨ Spell Learned: ${spellEntry.name}`, { description: spellEntry.description, duration: 5000 });
       set({ knownSpells: newKnown, reputation: newRep, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
+    } else if (slot.itemId === 'realm_codex') {
+      set({ overlay: state.overlay === 'codex' ? 'none' : 'codex', lastResult: null });
     } else if (slot.itemId === 'realm_map') {
       if (state.phase !== 'playing' && state.phase !== 'sailing') return;
       set({ overlay: state.overlay === 'map' ? 'none' : 'map', lastResult: null });
@@ -560,17 +568,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const state = get();
     if (state.currentEvent || state.lastResult || state.phase === 'dead' || state.phase === 'dungeon' || state.phase === 'battle') return;
 
-    const speed = state.mounted === 'horse' ? 2 : 1;
+    const speed = state.adminMode ? 8 : state.mounted === 'horse' ? 2 : 1;
     const nx = state.playerX + dx * speed;
     const ny = state.playerY + dy * speed;
 
     if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) return;
     const tileCode = getTileAt(nx, ny);
     const tileName = TILE_NAMES[tileCode] ?? 'grass';
-    if (state.phase === 'sailing') {
-      if (tileName !== 'deep_water' && tileName !== 'water' && tileName !== 'river' && tileName !== 'sand') return;
-    } else {
-      if (!isWalkableCode(tileCode)) return;
+    if (!state.adminMode) {
+      if (state.phase === 'sailing') {
+        if (tileName !== 'deep_water' && tileName !== 'water' && tileName !== 'river' && tileName !== 'sand') return;
+      } else {
+        if (!isWalkableCode(tileCode)) return;
+      }
     }
 
     const newFacing = { dx, dy };

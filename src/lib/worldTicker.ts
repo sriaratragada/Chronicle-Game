@@ -36,6 +36,11 @@ import { evaluateAllFactionStrategies, applyFactionStrategyActions } from './fac
 import { snapshotMarkets, appendSnapshot } from './marketIntelligence';
 import { synthesizeQuests, evaluateArcs } from './narrativeDirector';
 import { decayRelationships } from './relationshipGraph';
+import { generateNpcLifeDecision, generateGossip, isGeminiConfigured } from './geminiNpc';
+import { getPlayerTitle } from './gameData';
+
+// Rotating index for which NPC gets a life decision each cycle
+let _lifeDecisionNpcIdx = 0;
 
 const CHRONICLE_CAP = 400;
 
@@ -290,6 +295,47 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
   // Relationship decay every 50 ticks
   if (newWorldTime % 50 === 0) {
     decayRelationships(newWorldTime);
+  }
+
+  // ── Gemini NPC life decisions every 60 ticks ────────────────────────────
+  if (isGeminiConfigured() && newWorldTime % 60 === 0 && state.npcs.length > 0) {
+    const npc = state.npcs[_lifeDecisionNpcIdx % state.npcs.length]!;
+    _lifeDecisionNpcIdx = (_lifeDecisionNpcIdx + 1) % state.npcs.length;
+    const worldStateDesc = `Season: ${newSeason}, weather: ${state.weather?.condition ?? 'clear'}, time: ${newDayNight}. Current player location: ${state.currentLocation ?? 'wilderness'}.`;
+    generateNpcLifeDecision(npc.name, npc.title, npc.location, worldStateDesc).then(decision => {
+      if (!decision) return;
+      const entry: import('./gameTypes').ChronicleEntry = {
+        tick: newWorldTime,
+        season: newSeason,
+        text: `[${npc.name} — ${npc.title}] ${decision.action}${decision.reason ? ` — "${decision.reason}"` : ''}`,
+        type: 'npc',
+      };
+      useGameStore.setState(prev => ({
+        chronicle: [...prev.chronicle.slice(-(CHRONICLE_CAP - 1)), entry],
+      }));
+    }).catch(() => {/* silent */});
+  }
+
+  // ── Gemini gossip every 45 ticks when player is at a named location ─────
+  if (isGeminiConfigured() && newWorldTime % 45 === 1 && state.currentLocation) {
+    const recentEvents = state.chronicle.slice(-6).map(e => e.text);
+    const reputation = state.reputation as Record<string, number>;
+    const playerTitle = getPlayerTitle(reputation);
+    generateGossip(
+      'a local', state.currentLocation, playerTitle, reputation, recentEvents
+    ).then(gossipText => {
+      if (!gossipText?.trim()) return;
+      const clean = gossipText.trim().slice(0, 220);
+      const entry: import('./gameTypes').ChronicleEntry = {
+        tick: newWorldTime,
+        season: newSeason,
+        text: `[Heard in ${state.currentLocation}] ${clean}`,
+        type: 'npc',
+      };
+      useGameStore.setState(prev => ({
+        chronicle: [...prev.chronicle.slice(-(CHRONICLE_CAP - 1)), entry],
+      }));
+    }).catch(() => {/* silent */});
   }
 
   let escortId = state.escortCaravanId;

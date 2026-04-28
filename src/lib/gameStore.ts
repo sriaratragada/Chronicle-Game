@@ -38,7 +38,7 @@ import { rollFishingLoot } from './fishingLoot';
 import { appendSimEvents, recordPlayerShopBuy, recordPlayerShopSell, simEventsToChronicleEntries, SIM_EVENT_CAP } from './simulationEvents';
 import { evaluateMilestones, MILESTONES } from './progressionRegistry';
 import { SPELLS } from './arcaneSystem';
-import { updateEdge } from './relationshipGraph';
+import { updateEdge, seedInitialRelationships } from './relationshipGraph';
 import { toast } from 'sonner';
 
 const SEASON_ORDER: Season[] = ['thaw', 'summer', 'harvest', 'dark'];
@@ -250,6 +250,7 @@ function bootstrapWorldGeometry(): void {
 function buildFreshPlayingStatePayload(): Partial<GameState> & { phase: 'playing' } {
   initWorldEntities();
   const npcs = JSON.parse(JSON.stringify(INITIAL_NPCS)) as GameState['npcs'];
+  seedInitialRelationships(npcs.map(n => ({ id: n.id, faction: n.faction ?? 'none' })));
   const inv = makeStarterInventory();
   const fog = revealAroundPlayer(createFogMap(), LOCATION_COORDS.ashenford.x, LOCATION_COORDS.ashenford.y, 120);
   const initialChronicle: ChronicleEntry = {

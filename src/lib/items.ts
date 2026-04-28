@@ -63,6 +63,17 @@ export const ITEMS: Record<string, ItemDef> = {
   wooden_shield:  { id: 'wooden_shield', name: 'Wooden Shield', icon: '🛡️', type: 'armor', rarity: 'common', stackable: false, maxStack: 1, description: 'A battered round shield.', equipSlot: 'offhand', armor: 4, value: 15 },
   iron_shield:    { id: 'iron_shield', name: 'Iron Shield', icon: '🛡️', type: 'armor', rarity: 'uncommon', stackable: false, maxStack: 1, description: 'Reinforced with iron bands.', equipSlot: 'offhand', armor: 8, value: 50 },
 
+  // ── Steel tier (crafting level 4–5, uses gold_ore) ──
+  steel_helm:     { id: 'steel_helm',  name: 'Steel Helm',       icon: '⛑️',  type: 'armor',  rarity: 'rare', stackable: false, maxStack: 1, description: 'Tempered steel forged to a sharp edge. A warrior\'s crown.',   equipSlot: 'helm',    armor: 10, value: 80  },
+  steel_chest:    { id: 'steel_chest', name: 'Steel Breastplate', icon: '🛡️',  type: 'armor',  rarity: 'rare', stackable: false, maxStack: 1, description: 'Folded steel plate. Stops most blades cold.',                  equipSlot: 'chest',   armor: 18, value: 175 },
+  steel_legs:     { id: 'steel_legs',  name: 'Steel Greaves',     icon: '🦿',  type: 'armor',  rarity: 'rare', stackable: false, maxStack: 1, description: 'Heavy-duty leg protection. Slows you slightly, worth every ounce.', equipSlot: 'legs', armor: 13, value: 115 },
+  steel_shield:   { id: 'steel_shield',name: 'Steel Shield',      icon: '🛡️',  type: 'armor',  rarity: 'rare', stackable: false, maxStack: 1, description: 'A wall of steel. Enemies think twice.',                       equipSlot: 'offhand', armor: 15, value: 100 },
+
+  // ── Enchanted tier (crafting level 6–7, uses crystal) ──
+  enchanted_blade:{ id: 'enchanted_blade', name: 'Enchanted Blade', icon: '✨', type: 'weapon', rarity: 'legendary', stackable: false, maxStack: 1, description: 'A steel blade imbued with arcane energy. It hums when enemies are near.', equipSlot: 'mainhand', damage: 38, value: 350 },
+  shadow_cloak:   { id: 'shadow_cloak',    name: 'Shadow Cloak',    icon: '🌑', type: 'armor',  rarity: 'legendary', stackable: false, maxStack: 1, description: 'Woven from shadow-thread. Reduces enemy detection range. Feels like wearing nothing.', equipSlot: 'chest', armor: 6, value: 300 },
+  runic_helm:     { id: 'runic_helm',      name: 'Runic Helm',      icon: '🔮', type: 'armor',  rarity: 'legendary', stackable: false, maxStack: 1, description: 'Ancient runes carved into the steel grant the wearer clarity in battle.', equipSlot: 'helm', armor: 14, value: 280 },
+
   // ── Tools ──
   flint_steel:    { id: 'flint_steel', name: 'Flint & Steel', icon: '🔥', type: 'tool', rarity: 'common', stackable: false, maxStack: 1, description: 'Start fires. Signal for help.', value: 5 },
   pickaxe:        { id: 'pickaxe', name: 'Pickaxe', icon: '⛏️', type: 'tool', rarity: 'common', stackable: false, maxStack: 1, description: 'For mining ore and stone.', value: 15 },

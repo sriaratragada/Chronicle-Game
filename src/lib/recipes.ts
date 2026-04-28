@@ -43,6 +43,15 @@ export const RECIPES: Recipe[] = [
   // ── Fletching ──
   { id: 'craft_longbow', name: 'Longbow', inputs: [{ itemId: 'wood', qty: 4 }, { itemId: 'cloth', qty: 1 }], output: { itemId: 'longbow', qty: 1 }, skillReq: { skill: 'crafting', level: 2 } },
 
-  // ── Advanced ──
-  { id: 'forge_steel_sword', name: 'Steel Sword', inputs: [{ itemId: 'iron_ingot', qty: 5 }, { itemId: 'gold_ore', qty: 1 }], output: { itemId: 'steel_sword', qty: 1 }, workbench: 'forge', skillReq: { skill: 'crafting', level: 5 } },
+  // ── Steel tier (forge, crafting 4–5) ──
+  { id: 'forge_steel_sword',  name: 'Steel Sword',      inputs: [{ itemId: 'iron_ingot', qty: 5 }, { itemId: 'gold_ore', qty: 1 }],                             output: { itemId: 'steel_sword',  qty: 1 }, workbench: 'forge', skillReq: { skill: 'crafting', level: 5 } },
+  { id: 'forge_steel_helm',   name: 'Steel Helm',       inputs: [{ itemId: 'iron_ingot', qty: 4 }, { itemId: 'gold_ore', qty: 1 }],                             output: { itemId: 'steel_helm',   qty: 1 }, workbench: 'forge', skillReq: { skill: 'crafting', level: 4 } },
+  { id: 'forge_steel_chest',  name: 'Steel Breastplate',inputs: [{ itemId: 'iron_ingot', qty: 8 }, { itemId: 'gold_ore', qty: 2 }],                             output: { itemId: 'steel_chest',  qty: 1 }, workbench: 'forge', skillReq: { skill: 'crafting', level: 5 } },
+  { id: 'forge_steel_legs',   name: 'Steel Greaves',    inputs: [{ itemId: 'iron_ingot', qty: 5 }, { itemId: 'gold_ore', qty: 1 }],                             output: { itemId: 'steel_legs',   qty: 1 }, workbench: 'forge', skillReq: { skill: 'crafting', level: 4 } },
+  { id: 'forge_steel_shield', name: 'Steel Shield',     inputs: [{ itemId: 'iron_ingot', qty: 5 }, { itemId: 'wood', qty: 2 }, { itemId: 'gold_ore', qty: 1 }], output: { itemId: 'steel_shield', qty: 1 }, workbench: 'forge', skillReq: { skill: 'crafting', level: 4 } },
+
+  // ── Enchanted tier (no workbench, crafting 6–7, crystal required) ──
+  { id: 'enchant_blade',    name: 'Enchanted Blade',inputs: [{ itemId: 'steel_sword', qty: 1 }, { itemId: 'crystal', qty: 2 }, { itemId: 'herb', qty: 5 }],  output: { itemId: 'enchanted_blade', qty: 1 }, skillReq: { skill: 'crafting', level: 6 } },
+  { id: 'craft_shadow_cloak', name: 'Shadow Cloak', inputs: [{ itemId: 'leather_chest', qty: 1 }, { itemId: 'crystal', qty: 2 }, { itemId: 'cloth', qty: 5 }], output: { itemId: 'shadow_cloak', qty: 1 }, skillReq: { skill: 'crafting', level: 6 } },
+  { id: 'forge_runic_helm', name: 'Runic Helm',     inputs: [{ itemId: 'steel_helm', qty: 1 }, { itemId: 'crystal', qty: 3 }, { itemId: 'rare_herb', qty: 2 }], output: { itemId: 'runic_helm', qty: 1 }, skillReq: { skill: 'crafting', level: 7 } },
 ];

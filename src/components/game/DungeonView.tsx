@@ -9,6 +9,30 @@ import {
   dungeonTileHash,
 } from '@/lib/dungeonGen';
 import { useGameStore } from '@/lib/gameStore';
+import { addToInventory } from '@/lib/craftingSystem';
+import { inventoryToHotbar } from '@/lib/gameStore';
+
+/** Generate boss loot based on dungeon depth tier. Returns a list of [itemId, qty] pairs. */
+function rollBossLoot(depthTier: number, seed: number): { itemId: string; qty: number }[] {
+  const rng = (salt: number) => {
+    let h = (seed ^ (salt * 2654435761)) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+    return (h >>> 0) / 0xffffffff;
+  };
+  const loot: { itemId: string; qty: number }[] = [];
+  // Always: some gold ore and iron
+  loot.push({ itemId: 'iron_ore', qty: 2 + depthTier });
+  if (depthTier >= 2) loot.push({ itemId: 'gold_ore', qty: 1 + Math.floor(rng(1) * depthTier) });
+  if (depthTier >= 3) loot.push({ itemId: 'crystal', qty: 1 + Math.floor(rng(2) * 2) });
+  // Rare weapon drops
+  if (depthTier >= 2 && rng(3) < 0.35) loot.push({ itemId: 'iron_sword', qty: 1 });
+  if (depthTier >= 3 && rng(4) < 0.25) loot.push({ itemId: 'steel_sword', qty: 1 });
+  if (depthTier >= 4 && rng(5) < 0.12) loot.push({ itemId: 'enchanted_blade', qty: 1 });
+  // Health supplies
+  if (rng(6) < 0.6) loot.push({ itemId: 'health_potion', qty: 1 });
+  if (depthTier >= 2 && rng(7) < 0.4) loot.push({ itemId: 'health_potion', qty: 1 });
+  return loot;
+}
 
 function exitDungeon() {
   useGameStore.getState().finalizeDungeonExit();
@@ -260,12 +284,34 @@ export default function DungeonView() {
 
       // ── Exit tile ──
       if (tileAt(p.x + 2, p.y + 2) === 'exit') {
-        // Mark bossDefeated if all enemies are dead
+        // Mark bossDefeated + grant loot if all enemies are dead
         const allDead = dungeon.enemies.every(e => e.hp <= 0);
         if (allDead) {
           const cur = useGameStore.getState();
           if (cur.dungeonRun && !cur.dungeonRun.bossDefeated) {
-            useGameStore.setState({ dungeonRun: { ...cur.dungeonRun, bossDefeated: true } });
+            const { depthTier, caveId } = cur.dungeonRun;
+            const loot = rollBossLoot(depthTier, caveId);
+            let newInv = cur.inventory;
+            for (const l of loot) {
+              newInv = addToInventory(newInv, l.itemId, l.qty);
+            }
+            const lootDesc = loot.map(l => `${l.qty}× ${l.itemId.replace(/_/g, ' ')}`).join(', ');
+            const lootEntry = {
+              tick: cur.tick,
+              season: cur.season,
+              text: `Dungeon cleared (depth ${depthTier})! Claimed: ${lootDesc}.`,
+              type: 'discovery' as const,
+            };
+            useGameStore.setState({
+              dungeonRun: { ...cur.dungeonRun, bossDefeated: true },
+              inventory: newInv,
+              hotbar: inventoryToHotbar(newInv),
+              chronicle: [...cur.chronicle.slice(-399), lootEntry],
+              milestoneCounters: {
+                ...cur.milestoneCounters,
+                totalDungeonsCleared: (cur.milestoneCounters?.totalDungeonsCleared ?? 0) + 1,
+              },
+            });
           }
         }
         exitDungeon();

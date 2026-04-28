@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/lib/gameStore';
 import { ITEMS } from '@/lib/items';
 import { computeTradeLeads } from '@/lib/marketIntelligence';
+import { getInnProfile } from '@/lib/dialogue';
 
 function ShopPanel() {
   const overlay = useGameStore(s => s.overlay);
@@ -28,8 +29,8 @@ function ShopPanel() {
         <div className="max-w-3xl mx-auto p-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-display text-2xl text-gold gold-glow">
-              {marketKey.startsWith('road_inn_') ? 'Roadside Inn' : 'Market'} —{' '}
-              {marketKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              {marketKey.startsWith('road_inn_') ? getInnProfile(marketKey).name : 'Market'} —{' '}
+              {marketKey.startsWith('road_inn_') ? `Keeper: ${getInnProfile(marketKey).keeperName}` : marketKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
             </h2>
             <div className="flex items-center gap-4">
               <span className="font-mono-game text-[11px] text-gold">🪙 {gold}g</span>

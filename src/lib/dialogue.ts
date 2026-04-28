@@ -75,34 +75,120 @@ export function genericDialogue(npcId: string, name: string, job: string): Dialo
   };
 }
 
-/** Trail-side inn: trade + rumors (shop opened via dialogue effect). */
+// ── Road Inn identity generation ───────────────────────────────────────────
+function innHash(id: string, salt: number): number {
+  let h = salt | 0;
+  for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
+  return (Math.abs(h) & 0x7fffffff) / 0x7fffffff;
+}
+
+const INN_PREFIXES = [
+  'The Ancient', 'The Amber', 'The Dusty', 'The Golden', 'The Iron',
+  'The Silent', "The Wanderer's", 'The Broken', 'The Hollow', 'The Black',
+  'The Mossy', 'The Crooked', "The Traveler's", 'The Last', 'The Half-Empty',
+];
+const INN_NOUNS = [
+  'Flask', 'Boot', 'Lantern', 'Wheel', 'Mule',
+  'Hearth', 'Chalice', 'Kettle', 'Sow', 'Ox',
+  'Crown', 'Spur', 'Barrel', 'Crow', 'Coin',
+];
+const KEEPER_NAMES = [
+  'Aldric', 'Marta', 'Desmond', 'Lena', 'Rufus',
+  'Orla', 'Gwynn', 'Torben', 'Bessa', 'Cort',
+  'Yenna', 'Harwick', 'Sable', 'Ros', 'Edwyn',
+];
+
+const INN_GREETINGS = [
+  (n: string) => `${n} grunts without looking up. "Ale's two coppers. Don't start trouble."`,
+  (n: string) => `${n} waves you over with a warm grin. "Come in! Fire's hot and the stew's fresh."`,
+  (n: string) => `${n} eyes you from behind the bar. "Road-worn, are you. Sit down, then."`,
+  (n: string) => `${n} sets down a heavy mug. "You look half-dead. What do you need?"`,
+  (n: string) => `${n} leans forward conspiratorially. "You chose a good evening to stop. Interesting company tonight."`,
+  (n: string) => `${n} offers a slow nod. "This inn's stood forty years. Good beds, no questions asked."`,
+  (n: string) => `${n} is scrubbing the bar with a rag. "Stranger. Don't get blood on the floor."`,
+  (n: string) => `${n} looks up from the ledger. "Board and bed or just a drink? I don't run charity."`,
+];
+
+const INN_RUMORS = [
+  '"Merchant caravan rolled through yesterday. Soldiers were three days behind — never a good sign."',
+  '"A rider in dark colors stopped last night. Paid in gold, said nothing, left before dawn."',
+  '"They say the eastern road is watched. Bandits or toll collectors — hard to tell the difference."',
+  '"Had a scholar through last week. Kept asking about old ruins. Tipped well, didn\'t stay."',
+  '"The weather\'s wrong for the season. Old Gram says it hasn\'t been this dry since the war."',
+  '"Word is a warband broke apart east of here. Dangerous men looking for work. Stay sharp."',
+  '"A peddler told me the capital\'s gates were shut last market-day. Something\'s brewing up north."',
+  '"There was a fire at a hamlet south of here. Nobody hurt, but the granary\'s gone."',
+  '"Three knights rode through last night heading north. No banner. No explanation."',
+  '"I\'ve had three caravans skip this road in a fortnight. Something\'s scared the merchants off."',
+  '"An old woman came through yesterday. Said the standing stones were humming. Mad, probably."',
+  '"Someone paid me to ask travelers if they\'d seen a man with a red scarf. I didn\'t ask why."',
+];
+
+export interface InnProfile {
+  name: string;
+  keeperName: string;
+  greeting: string;
+  rumor: string;
+}
+
+export function getInnProfile(innId: string): InnProfile {
+  const h1 = innHash(innId, 1337);
+  const h2 = innHash(innId, 2741);
+  const h3 = innHash(innId, 9871);
+  const h4 = innHash(innId, 5023);
+  const h5 = innHash(innId, 7777);
+
+  const name = `${INN_PREFIXES[Math.floor(h1 * INN_PREFIXES.length)]} ${INN_NOUNS[Math.floor(h2 * INN_NOUNS.length)]}`;
+  const keeperName = KEEPER_NAMES[Math.floor(h3 * KEEPER_NAMES.length)]!;
+  const greetingFn = INN_GREETINGS[Math.floor(h4 * INN_GREETINGS.length)]!;
+
+  return {
+    name,
+    keeperName,
+    greeting: greetingFn(keeperName),
+    rumor: INN_RUMORS[Math.floor(h5 * INN_RUMORS.length)]!,
+  };
+}
+
+/** Trail-side inn: unique name + rumor per location (shop opened via dialogue effect). */
 export function roadInnDialogue(innMarketId: string): DialogueTree {
+  const p = getInnProfile(innMarketId);
   return {
     npcId: innMarketId,
     startNodeId: 'greet',
     nodes: {
       greet: {
         id: 'greet',
-        speaker: 'Innkeeper',
-        text: 'The hearth is warm and the road is long. Food, drink, and a few honest goods — what do you need?',
+        speaker: p.keeperName,
+        text: p.greeting,
         options: [
           {
             id: 'supplies',
             text: 'I need supplies.',
             effects: { openRoadInnShop: true },
-            exitText: 'The innkeeper slides a ledger aside and opens the storeroom.',
+            exitText: `${p.keeperName} slides the ledger aside and unlocks the storeroom.`,
           },
-          { id: 'news', text: 'What is the road saying?', nextNodeId: 'news' },
-          { id: 'leave', text: 'Just passing through.', exitText: 'Safe travels, stranger.' },
+          { id: 'news', text: 'What\'s the road saying?', nextNodeId: 'news' },
+          { id: 'leave', text: 'Just passing through.', exitText: `"Safe roads, stranger." ${p.keeperName} returns to work.` },
         ],
       },
       news: {
         id: 'news',
-        speaker: 'Innkeeper',
-        text: '"Bandits follow the coin, not the crown. Sleep light if you hear wheels after dark."',
+        speaker: p.keeperName,
+        text: p.rumor,
         options: [
-          { id: 'back', text: 'Good to know.', nextNodeId: 'greet' },
-          { id: 'leave2', text: 'Farewell.', exitText: 'The innkeeper nods.' },
+          { id: 'ask_more', text: 'Any other news?', nextNodeId: 'news2' },
+          { id: 'back', text: 'Good to know. Supplies?', nextNodeId: 'greet' },
+          { id: 'leave2', text: 'Farewell.', exitText: `${p.keeperName} nods once.` },
+        ],
+      },
+      news2: {
+        id: 'news2',
+        speaker: p.keeperName,
+        text: '"That\'s all I know. I keep my ears open and my mouth shut — mostly. Anything else?"',
+        options: [
+          { id: 'back2', text: 'Let me see your supplies.', nextNodeId: 'greet' },
+          { id: 'leave3', text: 'Thank you. Farewell.', exitText: `${p.keeperName} raises a hand in farewell.` },
         ],
       },
     },

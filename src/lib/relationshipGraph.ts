@@ -105,3 +105,56 @@ export function deserializeGraph(json: string): void {
 export function clearGraph(): void {
   graph.clear();
 }
+
+/** Return every edge, sorted by absolute sentiment strength. */
+export function getAllRelationships(): RelationshipEdge[] {
+  return Array.from(graph.values())
+    .filter(e => e.interactions > 0)
+    .sort((a, b) => Math.abs(b.sentiment) - Math.abs(a.sentiment));
+}
+
+/**
+ * Seed the graph at new-game time based on NPC faction alignment.
+ * Same-faction NPCs start with moderate positive sentiment;
+ * rival-faction NPCs start with moderate negative sentiment.
+ */
+export function seedInitialRelationships(
+  npcs: { id: string; faction: string }[],
+): void {
+  graph.clear();
+
+  const RIVALS: Record<string, string[]> = {
+    amber:   ['iron', 'ashen'],
+    iron:    ['amber', 'green', 'ashen'],
+    green:   ['iron'],
+    scholar: [],
+    ashen:   ['amber', 'iron'],
+    tide:    ['iron'],
+    none:    [],
+  };
+
+  // Deterministic noise so relationships feel varied, not uniform
+  function rng(a: string, b: string): number {
+    let h = 0;
+    for (const c of a + '|' + b) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0;
+    return (Math.abs(h) & 0x7fffffff) / 0x7fffffff;
+  }
+
+  for (let i = 0; i < npcs.length; i++) {
+    for (let j = i + 1; j < npcs.length; j++) {
+      const a = npcs[i]!;
+      const b = npcs[j]!;
+      if (a.faction === 'none' || b.faction === 'none') continue;
+      const r = rng(a.id, b.id);
+      if (a.faction === b.faction) {
+        // Allies: +15 to +40
+        const sentiment = 15 + Math.floor(r * 25);
+        updateEdge(a.id, b.id, sentiment, 'faction_bond', 0);
+      } else if ((RIVALS[a.faction] ?? []).includes(b.faction)) {
+        // Rivals: -10 to -30
+        const sentiment = -(10 + Math.floor(r * 20));
+        updateEdge(a.id, b.id, sentiment, 'faction_rivalry', 0);
+      }
+    }
+  }
+}

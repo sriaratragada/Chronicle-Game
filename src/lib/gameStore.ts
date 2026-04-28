@@ -449,6 +449,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const st = get();
     if (st.phase === 'booting') return;
     if (st.phase !== 'title') return;
+    // Preserve admin mode across the game boot so G-key on title carries through
+    const preservedAdminMode = st.adminMode;
     set({ phase: 'booting', bootError: null });
     scheduleAfterPaint(() => {
       try {
@@ -460,7 +462,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         scheduleAfterPaint(() => {
           try {
             const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
-            set(buildFreshPlayingStatePayload());
+            set({ ...buildFreshPlayingStatePayload(), adminMode: preservedAdminMode });
             if (import.meta.env.DEV) {
               console.debug(`[boot] slice2 entities+state ${(performance.now() - t1).toFixed(1)}ms`);
             }

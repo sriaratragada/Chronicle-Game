@@ -1,5 +1,6 @@
 import { Recipe, RECIPES } from './recipes';
 import { ItemDef, ITEMS } from './items';
+import type { SkillTree } from './skills';
 
 export interface InventorySlot {
   itemId: string;
@@ -42,18 +43,23 @@ export function canCraft(
   return true;
 }
 
-export function craft(inv: Inventory, recipe: Recipe): Inventory {
+export function craft(inv: Inventory, recipe: Recipe, skills?: SkillTree): Inventory {
   const next: Inventory = { slots: inv.slots.map(s => s ? { ...s } : null), equipment: { ...inv.equipment } };
-  // Remove inputs
-  for (const input of recipe.inputs) {
-    let remaining = input.qty;
-    for (let i = 0; i < next.slots.length && remaining > 0; i++) {
-      const s = next.slots[i];
-      if (s && s.itemId === input.itemId) {
-        const take = Math.min(s.qty, remaining);
-        s.qty -= take;
-        remaining -= take;
-        if (s.qty <= 0) next.slots[i] = null;
+  // efficient_craft perk: 20% chance to not consume materials
+  const freeChance = skills?.crafting.perks.includes('efficient_craft') ? 0.2 : 0;
+  const materialsFree = freeChance > 0 && Math.random() < freeChance;
+  if (!materialsFree) {
+    // Remove inputs
+    for (const input of recipe.inputs) {
+      let remaining = input.qty;
+      for (let i = 0; i < next.slots.length && remaining > 0; i++) {
+        const s = next.slots[i];
+        if (s && s.itemId === input.itemId) {
+          const take = Math.min(s.qty, remaining);
+          s.qty -= take;
+          remaining -= take;
+          if (s.qty <= 0) next.slots[i] = null;
+        }
       }
     }
   }
@@ -142,7 +148,7 @@ export function getAvailableRecipes(inv: Inventory, nearWorkbench?: string, skil
   });
 }
 
-export function getTotalArmor(inv: Inventory): number {
+export function getTotalArmor(inv: Inventory, skills?: SkillTree): number {
   let total = 0;
   for (const slot of Object.values(inv.equipment)) {
     if (slot) {
@@ -150,6 +156,8 @@ export function getTotalArmor(inv: Inventory): number {
       if (def?.armor) total += def.armor;
     }
   }
+  // thick_skin perk: +3 armor from toughness
+  if (skills?.combat.perks.includes('thick_skin')) total += 3;
   return total;
 }
 

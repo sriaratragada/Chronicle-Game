@@ -66,6 +66,8 @@ export default function DungeonView() {
   const facingDxRef = useRef(1);
   const lastMineRef = useRef(0);
   const lastPickaxeHintRef = useRef(0);
+  /** Per-enemy attack cooldown timestamps (keyed by enemy index). */
+  const enemyCombatRef = useRef<Record<number, number>>({});
 
   useEffect(() => {
     const p = playerRef.current;
@@ -212,7 +214,60 @@ export default function DungeonView() {
       if (p.vx > 0 && isSolid(tileAt(p.x + TILE_SIZE - 1, p.y + 2))) p.x = Math.floor(p.x / TILE_SIZE) * TILE_SIZE;
       if (p.vx < 0 && isSolid(tileAt(p.x, p.y + 2))) p.x = (Math.floor(p.x / TILE_SIZE) + 1) * TILE_SIZE;
 
+      // ── Enemy bump-attack combat ──
+      const nowCombat = performance.now();
+      const COMBAT_CD = 900; // ms between hits per enemy
+      const st = useGameStore.getState();
+      let playerHealthAfterCombat = st.health;
+      for (let ei = 0; ei < dungeon.enemies.length; ei++) {
+        const enemy = dungeon.enemies[ei];
+        if (!enemy || enemy.hp <= 0) continue;
+        const ex = enemy.x * TILE_SIZE;
+        const ey = enemy.y * TILE_SIZE;
+        const overlapX = Math.abs(p.x - ex) < TILE_SIZE * 1.5;
+        const overlapY = Math.abs(p.y - ey) < TILE_SIZE * 1.5;
+        if (overlapX && overlapY) {
+          const lastHit = enemyCombatRef.current[ei] ?? 0;
+          if (nowCombat - lastHit >= COMBAT_CD) {
+            enemyCombatRef.current[ei] = nowCombat;
+            // Player strikes enemy
+            const inv = st.inventory;
+            const wpn = inv.equipment.mainhand?.itemId;
+            const playerDmg = wpn === 'pickaxe' ? 18 : wpn === 'wooden_club' ? 12 : wpn === 'iron_sword' ? 20 : 8;
+            enemy.hp = Math.max(0, enemy.hp - playerDmg);
+            // Enemy strikes player
+            const baseFoeDmg = enemy.kind === 'goblin' ? 8 : enemy.kind === 'bat' ? 4 : 6;
+            const armor = Object.values(inv.equipment).reduce((sum, slot) => {
+              if (!slot) return sum;
+              // rough armor from item kind
+              const id = slot.itemId;
+              return sum + (id.includes('leather') ? 1 : id.includes('iron') ? 3 : id.includes('plate') ? 5 : 0);
+            }, 0);
+            const foeDmg = Math.max(1, baseFoeDmg - armor);
+            playerHealthAfterCombat = Math.max(0, playerHealthAfterCombat - foeDmg);
+          }
+        }
+        // Simple enemy patrol: move horizontally, bounce off walls
+        if (dungeon.enemies[ei]!.hp > 0) {
+          if (!enemy.vx) enemy.vx = (ei % 2 === 0 ? 0.025 : -0.025);
+          enemy.x = (enemy.x + (enemy.vx ?? 0) + DUNGEON_W) % DUNGEON_W;
+        }
+      }
+      if (playerHealthAfterCombat !== st.health) {
+        const nextPhase = playerHealthAfterCombat <= 0 ? 'dead' : st.phase;
+        useGameStore.setState({ health: playerHealthAfterCombat, phase: nextPhase });
+      }
+
+      // ── Exit tile ──
       if (tileAt(p.x + 2, p.y + 2) === 'exit') {
+        // Mark bossDefeated if all enemies are dead
+        const allDead = dungeon.enemies.every(e => e.hp <= 0);
+        if (allDead) {
+          const cur = useGameStore.getState();
+          if (cur.dungeonRun && !cur.dungeonRun.bossDefeated) {
+            useGameStore.setState({ dungeonRun: { ...cur.dungeonRun, bossDefeated: true } });
+          }
+        }
         exitDungeon();
         return;
       }

@@ -87,7 +87,7 @@ function runtimeDialogueFromGemini(npcKey: string, speaker: string, npcText: str
   };
 }
 
-function inventoryToHotbar(inv: Inventory): HotbarItem[] {
+export function inventoryToHotbar(inv: Inventory): HotbarItem[] {
   const result: HotbarItem[] = [];
   for (let i = 0; i < 6; i++) {
     const slot = inv.slots[i];
@@ -114,6 +114,57 @@ function makeStarterInventory(): Inventory {
 
 function playerNearCookingFire(px: number, py: number): boolean {
   return getEntitiesNear(px, py, 5).some(e => e.kind === 'cooking_fire');
+}
+
+/**
+ * Detect quests that newly completed (prev vs next arrays), apply their rewards,
+ * fire toast notifications, and add chronicle entries.
+ */
+function processCompletedQuests(
+  prevQuests: Quest[],
+  newQuests: Quest[],
+  state: GameState,
+): {
+  inventory: Inventory;
+  gold: number;
+  skills: SkillTree;
+  reputation: Reputation;
+  extraChronicle: ChronicleEntry[];
+} {
+  let inv = state.inventory;
+  let gold = state.gold;
+  let skills = state.skills;
+  const rep: Reputation = { ...state.reputation };
+  const extraChronicle: ChronicleEntry[] = [];
+
+  for (let i = 0; i < newQuests.length; i++) {
+    const prev = prevQuests[i];
+    const next = newQuests[i];
+    if (!prev || !next) continue;
+    if (prev.state === 'completed' || next.state !== 'completed') continue;
+
+    const r = next.rewards;
+    const parts: string[] = [];
+    if (r.gold) { gold += r.gold; parts.push(`${r.gold}g`); }
+    if (r.xp)   { skills = addXp(skills, 'combat', r.xp); parts.push(`${r.xp} XP`); }
+    if (r.itemId && ITEMS[r.itemId]) {
+      inv = addToInventory(inv, r.itemId, r.itemQty ?? 1);
+      parts.push(`${r.itemQty ?? 1}× ${ITEMS[r.itemId]!.name}`);
+    }
+    if (r.reputation) {
+      for (const [k, v] of Object.entries(r.reputation)) {
+        if (v != null) rep[k as keyof Reputation] = Math.min(100, (rep[k as keyof Reputation] ?? 0) + v);
+      }
+    }
+    const rewardStr = parts.length ? parts.join(', ') : 'Journey continues.';
+    toast(`📜 Quest Complete: "${next.title}"`, { description: rewardStr, duration: 5500 });
+    extraChronicle.push({
+      tick: state.tick, season: state.season,
+      text: `Quest completed: "${next.title}". Rewards: ${rewardStr}.`,
+      type: 'action',
+    });
+  }
+  return { inventory: inv, gold, skills, reputation: rep, extraChronicle };
 }
 
 function applyMilestoneCheck(candidateState: GameState): {
@@ -445,12 +496,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler ate ${def.name}. Hunger abates somewhat.`, type: 'action' };
       set({ hunger: newHunger, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
     } else if (def.type === 'potion') {
+      // alchemist perk: potions are 50% more effective
+      const potionMul = state.skills.crafting.perks.includes('alchemist') ? 1.5 : 1;
       let newHealth = state.health;
       let newHunger = state.hunger;
       let newMana = state.mana;
-      if (slot.itemId === 'health_potion') newHealth = Math.min(state.maxHealth, newHealth + 30);
-      if (slot.itemId === 'stamina_potion') newHunger = Math.min(100, newHunger + 30);
-      if (slot.itemId === 'mana_potion') newMana = Math.min(state.maxMana, newMana + 30);
+      if (slot.itemId === 'health_potion') newHealth = Math.min(state.maxHealth, newHealth + Math.round(30 * potionMul));
+      if (slot.itemId === 'stamina_potion') newHunger = Math.min(100, newHunger + Math.round(30 * potionMul));
+      if (slot.itemId === 'mana_potion') newMana = Math.min(state.maxMana, newMana + Math.round(30 * potionMul));
       const newInv = removeFromInventory(state.inventory, slot.itemId, 1);
       const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `The traveler drank a ${def.name}.`, type: 'action' };
       set({ health: newHealth, hunger: newHunger, mana: newMana, inventory: newInv, hotbar: inventoryToHotbar(newInv), chronicle: [...state.chronicle, entry] });
@@ -680,8 +733,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const meetsReqs = Object.entries(choice.requiresRep).every(([key, val]) => state.reputation[key as keyof Reputation] >= (val || 0));
       if (!meetsReqs) return;
     }
+    const repMul = state.skills.diplomacy.perks.includes('reputation_bonus') ? 1.5 : 1;
     const newRep = { ...state.reputation };
-    Object.entries(choice.repEffects).forEach(([key, val]) => { newRep[key as keyof Reputation] = Math.min(100, Math.max(0, newRep[key as keyof Reputation] + (val || 0))); });
+    Object.entries(choice.repEffects).forEach(([key, val]) => { newRep[key as keyof Reputation] = Math.min(100, Math.max(0, newRep[key as keyof Reputation] + Math.round((val || 0) * repMul))); });
     const newFactions = { ...state.factions };
     if (choice.factionEffects) Object.entries(choice.factionEffects).forEach(([key, val]) => { newFactions[key as keyof FactionStanding] = Math.min(100, Math.max(-100, newFactions[key as keyof FactionStanding] + (val || 0))); });
     const newNpcs = [...state.npcs];
@@ -727,8 +781,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const action = ENVIRONMENT_ACTIONS.find(a => a.id === actionId);
     if (!action) return;
     if (state.environmentCooldowns[actionId] && state.tick < state.environmentCooldowns[actionId]) return;
+    const repMulEnv = state.skills.diplomacy.perks.includes('reputation_bonus') ? 1.5 : 1;
     const newRep = { ...state.reputation };
-    Object.entries(action.repEffects).forEach(([key, val]) => { newRep[key as keyof Reputation] = Math.min(100, Math.max(0, newRep[key as keyof Reputation] + (val || 0))); });
+    Object.entries(action.repEffects).forEach(([key, val]) => { newRep[key as keyof Reputation] = Math.min(100, Math.max(0, newRep[key as keyof Reputation] + Math.round((val || 0) * repMulEnv))); });
     let newInv = state.inventory;
     if (action.itemReward) newInv = addToInventory(newInv, action.itemReward.id, action.itemReward.quantity);
     const newSkills = addXp(state.skills, 'crafting', 5);
@@ -1086,7 +1141,26 @@ export const useGameStore = create<GameStore>((set, get) => ({
           }
         })();
       }
-      set({ minorNpcState: nextMinor, npcs: newNpcs, activeDialogue: tree });
+      // Advance any 'talk' quest steps targeting this NPC
+      const talkQuests = state.quests.map(q => {
+        if (q.state !== 'active') return q;
+        const step = q.steps.find(s => !s.completed && s.type === 'talk' && (!s.targetNpcId || s.targetNpcId === (npcId ?? minorKey)));
+        if (!step) return q;
+        const updatedSteps = q.steps.map(s => s === step ? { ...s, completed: true } : s);
+        const allDone = updatedSteps.every(s => s.completed);
+        return { ...q, steps: updatedSteps, state: allDone ? ('completed' as const) : q.state };
+      });
+      const talkQr = processCompletedQuests(state.quests, talkQuests, state);
+      set({
+        minorNpcState: nextMinor, npcs: newNpcs, activeDialogue: tree,
+        quests: talkQuests,
+        inventory: talkQr.inventory,
+        hotbar: inventoryToHotbar(talkQr.inventory),
+        gold: talkQr.gold,
+        skills: talkQr.skills,
+        reputation: talkQr.reputation,
+        chronicle: [...state.chronicle, ...talkQr.extraChronicle],
+      });
       return true;
     }
 
@@ -1095,7 +1169,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (resource) {
       const itemMap: Record<string, string> = { resource_tree: 'wood', resource_rock: 'stone', resource_iron: 'iron_ore', resource_herb: 'herb', resource_berry: 'berries' };
       const itemId = itemMap[resource.kind] ?? 'wood';
-      const qty = state.skills.crafting.perks.includes('double_yield') ? 2 : 1;
+      // double_yield perk: +1, Green Covenant standing ≥50: +1 additional
+      const greenBonus = state.factions.green >= 50 ? 1 : 0;
+      const qty = (state.skills.crafting.perks.includes('double_yield') ? 2 : 1) + greenBonus;
       removeEntity(resource.id);
       const newInv = addToInventory(state.inventory, itemId, qty);
       const newSkills = addXp(state.skills, 'crafting', 3);
@@ -1115,7 +1191,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (state.phase !== 'playing') return;
     const result = playerAttack(state.playerX, state.playerY, state.facingDir.dx, state.facingDir.dy, state.inventory, state.skills);
     if (!result) return;
-    const newSkills = addXp(state.skills, 'combat', result.xpGain);
+    // Iron Compact standing: up to 25% combat XP bonus at max standing
+    const ironXpMul = 1 + Math.min(0.25, Math.max(0, state.factions.iron) / 400);
+    const newSkills = addXp(state.skills, 'combat', Math.round(result.xpGain * ironXpMul));
     const newChronicle: ChronicleEntry[] = [];
     let inv = state.inventory;
     let gold = state.gold;
@@ -1135,12 +1213,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
       newChronicle.push({ tick: state.tick, season: state.season, text: `The traveler slew an enemy. (+${result.xpGain} combat XP)`, type: 'action' });
     }
 
-    // Check if killed enemies advance any kill quests
+    // Check if killed enemies advance any kill quests (respects targetEntityKind if set)
     const newQuests = state.quests.map(q => {
       if (q.state !== 'active') return q;
       const step = q.steps.find(s => !s.completed && s.type === 'kill');
-      if (step && result.killed) return { ...q, steps: q.steps.map(s => s === step ? { ...s, completed: true } : s) };
-      return q;
+      if (!step || !result.killed) return q;
+      // If a specific entity kind is required, check it
+      if (step.targetEntityKind && result.targetKind && step.targetEntityKind !== result.targetKind) return q;
+      const updatedSteps = q.steps.map(s => s === step ? { ...s, completed: true } : s);
+      const allDone = updatedSteps.every(s => s.completed);
+      return { ...q, steps: updatedSteps, state: allDone ? ('completed' as const) : q.state };
     });
 
     let tut = state.tutorialObjective;
@@ -1149,19 +1231,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const newCounters = result.killed
       ? { ...state.milestoneCounters, totalKills: state.milestoneCounters.totalKills + 1, totalGoldEarned: state.milestoneCounters.totalGoldEarned + (result.loot?.gold ?? 0) }
       : state.milestoneCounters;
-    const ms = applyMilestoneCheck({ ...state, skills: newSkills, inventory: inv, gold, milestoneCounters: newCounters });
+    // Distribute rewards for any quests that just completed
+    const qr = processCompletedQuests(state.quests, newQuests, { ...state, skills: newSkills, inventory: inv, gold });
+    const ms = applyMilestoneCheck({ ...state, skills: qr.skills, inventory: qr.inventory, gold: qr.gold, reputation: qr.reputation, milestoneCounters: newCounters });
 
     set({
       skills: ms.skills,
       reputation: ms.reputation,
       playerTitle: ms.playerTitle,
       quests: newQuests,
-      inventory: inv,
-      hotbar: inventoryToHotbar(inv),
-      gold: gold + ms.goldBonus,
+      inventory: qr.inventory,
+      hotbar: inventoryToHotbar(qr.inventory),
+      gold: qr.gold + ms.goldBonus,
       milestoneCounters: newCounters,
       milestonesUnlocked: ms.milestonesUnlocked,
-      chronicle: [...state.chronicle, ...newChronicle, ...ms.extraChronicle],
+      chronicle: [...state.chronicle, ...newChronicle, ...qr.extraChronicle, ...ms.extraChronicle],
       tutorialObjective: tut,
     });
   },
@@ -1200,7 +1284,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
       return;
     }
-    const newInv = craft(state.inventory, recipe);
+    const newInv = craft(state.inventory, recipe, state.skills);
     const newSkills = addXp(state.skills, 'crafting', 10);
     const entry: ChronicleEntry = { tick: state.tick, season: state.season, text: `Crafted ${recipe.name}.`, type: 'action' };
     let tut = state.tutorialObjective;
@@ -1238,7 +1322,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let price = Math.max(1, Math.round(mItem.basePrice * mItem.priceMultiplier * scarcity));
     const locals = state.npcs.filter(n => n.location === state.currentLocation || n.location === mkey);
     const bestDisp = locals.length ? Math.max(...locals.map(n => n.disposition)) : 0;
-    const discount = Math.min(0.12, Math.max(0, bestDisp) / 120);
+    // NPC disposition discount (max 12%)
+    let discount = Math.min(0.12, Math.max(0, bestDisp) / 120);
+    // silver_tongue perk: additional 10% trade discount
+    if (state.skills.diplomacy.perks.includes('silver_tongue')) discount = Math.min(0.25, discount + 0.10);
+    // Amber Compact standing: up to 8% discount at max standing
+    const amberBonus = Math.min(0.08, Math.max(0, state.factions.amber) / 1250);
+    discount = Math.min(0.30, discount + amberBonus);
     price = Math.max(1, Math.round(price * (1 - discount)));
     const totalCost = price * qty;
     if (state.gold < totalCost) return;
@@ -1294,7 +1384,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const state = get();
     if (state.phase !== 'battle' || !state.battleState) return;
     const bs = state.battleState;
-    const dmg = computePlayerStrikeDamage(state.inventory, state.skills, bs.playerGuarded ? 0.88 : 1);
+    const dmg = computePlayerStrikeDamage(state.inventory, state.skills, bs.playerGuarded ? 0.88 : 1, state.health, state.maxHealth);
     let foeHp = Math.max(0, bs.foeHp - dmg);
     const log = [...bs.log, `You strike for ${dmg}.`];
     let nextBattle: BattleState | null = { ...bs, foeHp, playerGuarded: false, log };
@@ -1322,7 +1412,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       nextBattle = null;
     } else {
       const foeEnt = { id: 'battle_foe', kind: bs.foeKind, x: 0, y: 0, hp: 1, maxHp: 1, data: {} } as WorldEntity;
-      let hit = enemyAttackDamage(foeEnt, getTotalArmor(state.inventory));
+      let hit = enemyAttackDamage(foeEnt, getTotalArmor(state.inventory, state.skills));
       if (bs.playerGuarded) hit = Math.max(1, Math.floor(hit * 0.55));
       health = Math.max(0, health - hit);
       nextBattle.log = [...nextBattle.log, `${bs.label} strikes for ${hit}.`];
@@ -1356,7 +1446,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (state.phase !== 'battle' || !state.battleState) return;
     const bs = { ...state.battleState, playerGuarded: true, log: [...state.battleState.log, 'You raise your guard.'] };
     const foeEnt = { id: 'battle_foe', kind: bs.foeKind, x: 0, y: 0, hp: 1, maxHp: 1, data: {} } as WorldEntity;
-    let hit = enemyAttackDamage(foeEnt, getTotalArmor(state.inventory));
+    let hit = enemyAttackDamage(foeEnt, getTotalArmor(state.inventory, state.skills));
     hit = Math.max(1, Math.floor(hit * 0.55));
     const health = Math.max(0, state.health - hit);
     bs.log = [...bs.log, `${bs.label} strikes for ${hit} (guarded).`];
@@ -1389,7 +1479,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
     const bs = state.battleState;
     const foeEnt = { id: 'battle_foe', kind: bs.foeKind, x: 0, y: 0, hp: 1, maxHp: 1, data: {} } as WorldEntity;
-    const hit = enemyAttackDamage(foeEnt, getTotalArmor(state.inventory));
+    const hit = enemyAttackDamage(foeEnt, getTotalArmor(state.inventory, state.skills));
     const health = Math.max(0, state.health - hit);
     const log = [...bs.log, `You stumble—${bs.label} strikes for ${hit}.`];
     let phase: typeof state.phase = 'battle';
@@ -1634,8 +1724,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
           set({ phase: 'playing', battleState: null, mana: newMana, spellCooldowns: newCooldowns, reputation: newRep, chronicle: [...state.chronicle, ...chronicle] });
           return;
         }
-        chronicle.push({ tick: state.tick, season: state.season, text: 'Shadow Step — a blink through shadow.', type: 'action' });
-        break;
+        // Outside battle: blink 14 tiles in facing direction, skipping impassable terrain
+        {
+          const { dx: fdx, dy: fdy } = state.facingDir;
+          const stepDir = (fdx !== 0 || fdy !== 0) ? { dx: fdx, dy: fdy } : { dx: 0, dy: 1 };
+          let bx = state.playerX;
+          let by = state.playerY;
+          for (let step = 0; step < 14; step++) {
+            const nx = bx + stepDir.dx;
+            const ny = by + stepDir.dy;
+            if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) break;
+            if (!isWalkableCode(getTileAt(nx, ny))) break;
+            bx = nx; by = ny;
+          }
+          const newBlink = revealAroundPlayer(fog, bx, by, 120);
+          chronicle.push({ tick: state.tick, season: state.season, text: 'Shadow Step — the traveler blinked through shadow.', type: 'action' });
+          set({
+            playerX: bx, playerY: by,
+            fog: newBlink,
+            mana: newMana,
+            spellCooldowns: newCooldowns,
+            reputation: newRep,
+            chronicle: [...state.chronicle, ...chronicle],
+          });
+          return;
+        }
       case 'reveal':
         fog = revealAroundPlayer(state.fog, state.playerX, state.playerY, 280);
         chronicle.push({ tick: state.tick, season: state.season, text: 'Reveal — the arcane eye illuminated the land.', type: 'action' });

@@ -69,11 +69,26 @@ export function getKillLoot(kind: EntityKind, seed = 0): KillLoot {
   }
 }
 
-export function computePlayerStrikeDamage(inventory: Inventory, skills: SkillTree, powerMul = 1): number {
+export function computePlayerStrikeDamage(
+  inventory: Inventory,
+  skills: SkillTree,
+  powerMul = 1,
+  currentHealth?: number,
+  maxHealth?: number,
+): number {
   const baseDamage = getWeaponDamage(inventory);
   const skillBonus = Math.floor(skills.combat.level * 1.5);
   const hasPowerStrike = skills.combat.perks.includes('power_strike');
-  return Math.max(1, Math.floor((baseDamage + skillBonus) * (hasPowerStrike ? 1.2 : 1) * powerMul));
+  // berserker perk: +30% damage when below 30% health
+  const hasBerserker = skills.combat.perks.includes('berserker');
+  const isBerserk = hasBerserker && currentHealth != null && maxHealth != null && maxHealth > 0
+    && currentHealth / maxHealth < 0.3;
+  return Math.max(1, Math.floor(
+    (baseDamage + skillBonus)
+    * (hasPowerStrike ? 1.2 : 1)
+    * (isBerserk ? 1.3 : 1)
+    * powerMul,
+  ));
 }
 
 export function playerAttack(
@@ -107,6 +122,7 @@ export function playerAttack(
     });
   }
 
+  // Note: health not available in overworld attack context — berserker handled in battleStrikeAction
   const totalDamage = computePlayerStrikeDamage(inventory, skills, 1);
 
   best.hp -= totalDamage;

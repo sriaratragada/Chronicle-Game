@@ -1,4 +1,4 @@
-import { useGameStore } from './gameStore';
+import { useGameStore, inventoryToHotbar } from './gameStore';
 import { tickWeather } from './weatherSystem';
 import { getDayNightPhase, TICKS_PER_DAY } from './timeSystem';
 import { tickMarket, applyCaravanDelivery } from './economySystem';
@@ -16,8 +16,11 @@ import {
   getEntityById,
 } from './worldEntities';
 import { enemyAttackDamage, getAggroRadius } from './combatSystem';
-import { getTotalArmor } from './craftingSystem';
+import { getTotalArmor, countItem, addToInventory } from './craftingSystem';
+import { addXp } from './skills';
+import { ITEMS } from './items';
 import { MAP_W, MAP_H } from './mapGenerator';
+import { toast } from 'sonner';
 import { tickRegionalModifiers } from './regionalState';
 import type { ChronicleEntry, GameState, DayNightPhase, Season, SimEvent } from './gameTypes';
 import {
@@ -85,6 +88,10 @@ interface WorldTickScratch {
   /** Player / caravan sim events emitted during phase B (e.g. escort pay). */
   extraSimEvents: SimEvent[];
   simIdIndex: { n: number };
+  /** Accumulated quest rewards (gold, items, skills) from newly-completed quests. */
+  questRewardGold: number;
+  questRewardInv: import('./craftingSystem').Inventory | null;
+  questRewardSkills: import('./skills').SkillTree | null;
 }
 
 function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
@@ -145,9 +152,17 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
     let changed = false;
     const steps = q.steps.map(s => {
       if (s.completed) return s;
+      // goto step: auto-complete when at target location
       if (s.type === 'goto' && s.targetLocation === state.currentLocation) {
         changed = true;
         return { ...s, completed: true };
+      }
+      // fetch step: auto-complete when inventory has enough of the item
+      if (s.type === 'fetch' && s.targetItemId && s.targetQty) {
+        if (countItem(state.inventory, s.targetItemId) >= s.targetQty) {
+          changed = true;
+          return { ...s, completed: true };
+        }
       }
       return s;
     });
@@ -161,6 +176,34 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
       newQuests = newQuestsMapped;
       break;
     }
+  }
+
+  // Distribute rewards for quests that newly completed this tick
+  let questRewardGold = 0;
+  let questRewardInv: import('./craftingSystem').Inventory | null = null;
+  let questRewardSkills: import('./skills').SkillTree | null = null;
+  for (let i = 0; i < newQuests.length; i++) {
+    const prev = state.quests[i];
+    const next = newQuests[i];
+    if (!prev || !next || prev.state === 'completed' || next.state !== 'completed') continue;
+    const r = next.rewards;
+    const parts: string[] = [];
+    if (r.gold) { questRewardGold += r.gold; parts.push(`${r.gold}g`); }
+    if (r.xp)   {
+      questRewardSkills = addXp(questRewardSkills ?? state.skills, 'combat', r.xp);
+      parts.push(`${r.xp} XP`);
+    }
+    if (r.itemId && ITEMS[r.itemId]) {
+      questRewardInv = addToInventory(questRewardInv ?? state.inventory, r.itemId, r.itemQty ?? 1);
+      parts.push(`${r.itemQty ?? 1}× ${ITEMS[r.itemId]!.name}`);
+    }
+    const desc = parts.length ? parts.join(', ') : 'Journey continues.';
+    toast(`📜 Quest Complete: "${next.title}"`, { description: desc, duration: 5500 });
+    extraChronicle.push({
+      tick: state.tick, season: state.season,
+      text: `Quest completed: "${next.title}". Rewards: ${desc}.`,
+      type: 'action',
+    });
   }
 
   const newMana = Math.min(state.maxMana ?? 30, (state.mana ?? 0) + 2);
@@ -275,6 +318,9 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
     newLastArcTick,
     extraSimEvents: [...factionStrategyEvents],
     simIdIndex: { n: 0 },
+    questRewardGold,
+    questRewardInv,
+    questRewardSkills,
   };
 }
 
@@ -327,10 +373,16 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
       extraChronicle.push({
         tick: state.tick,
         season: state.season,
-        text: 'The caravan master pays escort coin as wagons roll into the yard.',
+        text: `The caravan master pays ${pay}g escort coin as wagons roll into the yard.`,
         type: 'world',
         eventId: escEv.id,
       });
+      // Clear escort tracker — job complete
+      scratch.escortId = null;
+    }
+    // If escort caravan arrived but player was too far away, clear after a grace period
+    if (latest.escortCaravanId === c.id && c.data.escortPaid) {
+      scratch.escortId = null;
     }
   }
 
@@ -338,10 +390,14 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
   const py = latest.playerY;
   // Single spatial scan covers both aggro (r=15) and flee (r=20) ranges
   const nearbyEntities = getEntitiesNear(px, py, 20);
+  // light_foot perk: enemies have 35% smaller aggro radius vs this player
+  const hasLightFoot = latest.skills.stealth.perks.includes('light_foot');
+  const aggroMul = hasLightFoot ? 0.65 : 1;
+
   for (const enemy of nearbyEntities) {
     if (!['wolf', 'bandit', 'warband', 'bear'].includes(enemy.kind)) continue;
     const dist = Math.sqrt((enemy.x - px) ** 2 + (enemy.y - py) ** 2);
-    const aggroR = getAggroRadius(enemy);
+    const aggroR = getAggroRadius(enemy) * aggroMul;
     if (dist > aggroR) continue;
 
     const dx = Math.sign(px - enemy.x);
@@ -349,7 +405,7 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
     moveEntity(enemy.id, enemy.x + dx, enemy.y + dy);
 
     if (dist < 2) {
-      const armor = getTotalArmor(latest.inventory);
+      const armor = getTotalArmor(latest.inventory, latest.skills);
       const dmg = enemyAttackDamage(enemy, armor);
       newHealth = Math.max(0, newHealth - dmg);
       if (newHealth <= 0) newPhase = 'dead';
@@ -432,6 +488,11 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
     nextChronicle = merged.length > CHRONICLE_CAP ? merged.slice(-CHRONICLE_CAP) : merged;
   }
 
+  // Apply quest rewards accumulated during phase A
+  const finalGold = newGold + scratch.questRewardGold;
+  const finalInv = scratch.questRewardInv;
+  const finalSkills = scratch.questRewardSkills;
+
   const patch: Partial<GameState> = {
     worldTime: newWorldTime,
     dayNightPhase: newDayNight,
@@ -440,13 +501,15 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
     health: newHealth,
     phase: newPhase,
     regionalModifiers: newRegional,
-    gold: newGold,
+    gold: finalGold,
     escortCaravanId: escortId,
     mana: scratch.newMana,
     synthesisCooldowns: newSynthesisCooldowns,
     marketSnapshots: newMarketSnapshots,
     lastArcTick: newLastArcTick,
   };
+  if (finalInv) { patch.inventory = finalInv; patch.hotbar = inventoryToHotbar(finalInv); }
+  if (finalSkills) patch.skills = finalSkills;
   if (newWeather !== state.weather) patch.weather = newWeather;
   if (newMarkets !== state.markets) patch.markets = newMarkets;
   if (newFactionStates !== state.factionStates) patch.factionStates = newFactionStates;

@@ -26,6 +26,18 @@ export function getTimeString(worldTime: number): string {
   return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 }
 
+// Lighting keyframes: [hour, r, g, b, alpha] – arranged in ascending order.
+const LIGHTING_KEYFRAMES: [number, number, number, number, number][] = [
+  [0,  10,  10,  40, 0.35], // midnight – deep night
+  [5,  10,  10,  40, 0.35], // pre-dawn  – still dark
+  [6,  255, 200, 140, 0.08], // dawn      – warm golden tint
+  [7,  0,   0,   0,  0],    // morning   – clear daylight
+  [18, 0,   0,   0,  0],    // late-day  – still clear
+  [19, 200, 100, 50, 0.12], // dusk      – orange-red tint
+  [20, 10,  10,  40, 0.35], // nightfall – deep night
+  [24, 10,  10,  40, 0.35], // (wrap)    – deep night
+];
+
 // Lighting tint based on time of day: returns [r, g, b, alpha] overlay.
 // Colors are interpolated smoothly across keyframe hours so there are no
 // sudden jumps when the phase changes.
@@ -33,26 +45,13 @@ export function getLightingTint(worldTime: number): [number, number, number, num
   // Fractional hour in [0, 24)
   const hour = ((worldTime % TICKS_PER_DAY) / TICKS_PER_DAY) * 24;
 
-  // Keyframes: [hour, r, g, b, alpha]
-  // Arranged in ascending order and wrapped at 24h.
-  const keyframes: [number, number, number, number, number][] = [
-    [0,  10,  10,  40, 0.35], // midnight – deep night
-    [5,  10,  10,  40, 0.35], // pre-dawn  – still dark
-    [6,  255, 200, 140, 0.08], // dawn      – warm golden tint
-    [7,  0,   0,   0,  0],    // morning   – clear daylight
-    [18, 0,   0,   0,  0],    // late-day  – still clear
-    [19, 200, 100, 50, 0.12], // dusk      – orange-red tint
-    [20, 10,  10,  40, 0.35], // nightfall – deep night
-    [24, 10,  10,  40, 0.35], // (wrap)    – deep night
-  ];
-
   // Find the surrounding keyframes
-  let lo = keyframes[0];
-  let hi = keyframes[keyframes.length - 1];
-  for (let i = 0; i < keyframes.length - 1; i++) {
-    if (hour >= keyframes[i][0] && hour < keyframes[i + 1][0]) {
-      lo = keyframes[i];
-      hi = keyframes[i + 1];
+  let lo = LIGHTING_KEYFRAMES[0];
+  let hi = LIGHTING_KEYFRAMES[LIGHTING_KEYFRAMES.length - 1];
+  for (let i = 0; i < LIGHTING_KEYFRAMES.length - 1; i++) {
+    if (hour >= LIGHTING_KEYFRAMES[i][0] && hour < LIGHTING_KEYFRAMES[i + 1][0]) {
+      lo = LIGHTING_KEYFRAMES[i];
+      hi = LIGHTING_KEYFRAMES[i + 1];
       break;
     }
   }

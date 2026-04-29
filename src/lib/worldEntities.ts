@@ -233,7 +233,7 @@ export function initWorldEntities() {
     { kind: 'bear', hp: 60, pred: t => ['forest', 'hill', 'dense_forest'].includes(t) },
     { kind: 'bandit', hp: 50, pred: t => ['road', 'hill', 'grass', 'ruins'].includes(t) },
   ];
-  const quota = [24, 22, 18, 12, 8, 6]; // deer, sheep, rabbit, wolf, bear, bandit — sum ~90
+  const quota = [48, 44, 36, 24, 16, 6]; // deer, sheep, rabbit, wolf, bear, bandit — sum ~174
   for (let si = 0; si < specs.length; si++) {
     const { kind, hp, pred } = specs[si]!;
     for (let j = 0; j < quota[si]!; j++) {
@@ -263,7 +263,7 @@ export function initWorldEntities() {
   }
 
   // Plains herds — extra sheep/rabbit/deer grouped on grass, clearing, and farm strips
-  for (let herd = 0; herd < 20; herd++) {
+  for (let herd = 0; herd < 36; herd++) {
     let cx = 0;
     let cy = 0;
     let found = false;
@@ -595,7 +595,7 @@ const RESPAWN_RING_MAX = 240;
 const RESPAWN_ATTEMPTS = 28;
 
 export function respawnWildlifeFarFrom(px: number, py: number, worldTime: number) {
-  if (countWildlifeEntities() >= 110) return;
+  if (countWildlifeEntities() >= 200) return;
   const hash = (a: number, b: number) => {
     let h = (a * 374761393 + b * 668265263 + worldTime) & 0xffffffff;
     h = ((h ^ (h >> 13)) * 1274126177) & 0xffffffff;

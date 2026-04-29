@@ -715,11 +715,11 @@ function generateChunkEntities(
       const h = hash(wx * 37 + wy * 53, 7777);
       const h2 = hash(wx * 41, wy * 59);
 
-      if ((code === T.MOUNTAIN || code === T.SNOW || code === T.HILL) && h < 0.008)
+      if ((code === T.MOUNTAIN || code === T.SNOW || code === T.HILL) && h < 0.004)
         out.push({ x: wx, y: wy, type: 'eagle', speed: 0.5 + h2 * 0.4, phase: h2 * Math.PI * 2, radius: 24 });
       else if ((code === T.RIVER || code === T.WATER) && h < 0.025)
         out.push({ x: wx, y: wy, type: 'fish', speed: 0.3 + h2 * 0.3, phase: h2 * Math.PI * 2, radius: 7 });
-      else if ((code === T.FOREST || code === T.HILL) && h > 0.97)
+      else if ((code === T.FOREST || code === T.HILL) && h > 0.985)
         out.push({ x: wx, y: wy, type: 'crow', speed: 0.6 + h2 * 0.4, phase: h2 * Math.PI * 2, radius: 18 });
       else if ((code === T.SAND || code === T.RIVER) && h < 0.012)
         out.push({ x: wx, y: wy, type: 'fisherman', speed: 0.03 + h2 * 0.04, phase: h2 * Math.PI * 2, radius: 4 });

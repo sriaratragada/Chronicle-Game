@@ -10,6 +10,7 @@ import {
 import { getEntitiesInChunk, getEntitiesNear, WorldEntity } from '@/lib/worldEntities';
 import { LOCATIONS } from '@/lib/gameData';
 import { Season } from '@/lib/gameTypes';
+import { getLightingTint } from '@/lib/timeSystem';
 
 // ── Location icons ─────────────────────────────────────────────────────────
 const LOC_ICONS: Record<string, string> = {};
@@ -689,6 +690,7 @@ export default function WorldMap() {
     playerX: 0, playerY: 0,
     season: 'thaw' as Season,
     dayNightPhase: 'day' as string,
+    worldTime: 0,
     visitedLocations: [] as string[],
     nearestLocation: null as string | null,
     zoom: 7,
@@ -703,6 +705,7 @@ export default function WorldMap() {
   const playerY = useGameStore(s => s.playerY);
   const season = useGameStore(s => s.season);
   const dayNightPhase = useGameStore(s => s.dayNightPhase);
+  const worldTime = useGameStore(s => s.worldTime);
   const visitedLocations = useGameStore(s => s.visitedLocations);
   const nearestLocation = useGameStore(s => s.nearestLocation);
   const movePlayer = useGameStore(s => s.movePlayer);
@@ -717,7 +720,7 @@ export default function WorldMap() {
   useLayoutEffect(() => {
     const prev = stateRef.current;
     const seasonChanged = prev.season !== season;
-    stateRef.current = { ...prev, playerX, playerY, season, dayNightPhase, visitedLocations, nearestLocation, clearedCaves };
+    stateRef.current = { ...prev, playerX, playerY, season, dayNightPhase, worldTime, visitedLocations, nearestLocation, clearedCaves };
     if (seasonChanged) chunksRef.current.clear();
   });
 
@@ -1310,13 +1313,10 @@ export default function WorldMap() {
       }
 
       // ── Day/night tint ─────────────────────────────────────────────
-      const dayNight = stateRef.current.dayNightPhase;
-      if (dayNight === 'night') {
-        ctx.fillStyle = 'rgba(10,10,40,0.35)'; ctx.fillRect(0, 0, canvasW, canvasH);
-      } else if (dayNight === 'dusk') {
-        ctx.fillStyle = 'rgba(200,100,50,0.12)'; ctx.fillRect(0, 0, canvasW, canvasH);
-      } else if (dayNight === 'dawn') {
-        ctx.fillStyle = 'rgba(255,200,140,0.08)'; ctx.fillRect(0, 0, canvasW, canvasH);
+      const [tr, tg, tb, ta] = getLightingTint(stateRef.current.worldTime);
+      if (ta > 0) {
+        ctx.fillStyle = `rgba(${tr},${tg},${tb},${ta.toFixed(3)})`;
+        ctx.fillRect(0, 0, canvasW, canvasH);
       }
 
       // ── Vignette (cached; gradient is expensive — only rebuild on resize) ──

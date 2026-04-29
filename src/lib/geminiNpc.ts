@@ -1,5 +1,6 @@
 // Gemini-powered NPC dialogue and life simulation
 // Requires VITE_GEMINI_API_KEY in environment
+// Optional: VITE_RAG_SERVICE_URL enables semantic retrieval of relevant events/memories
 
 const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
@@ -44,11 +45,94 @@ interface LifeDecision {
   reason: string;
 }
 
+interface RagContext {
+  events: string[];
+  memories: string[];
+}
+
 const responseCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 60000; // 1 minute
 
 function getApiKey(): string | null {
   return (import.meta as any).env?.VITE_GEMINI_API_KEY ?? null;
+}
+
+function getRagServiceUrl(): string | null {
+  return (import.meta as any).env?.VITE_RAG_SERVICE_URL ?? null;
+}
+
+/**
+ * Fetch semantically relevant world events and NPC memories from the RAG
+ * microservice.  Returns null silently when the service is not configured or
+ * unreachable so the caller can fall back to the slice-based defaults.
+ */
+async function fetchRagContext(
+  query: string,
+  npcId: string,
+  topKEvents = 6,
+  topKMemories = 4,
+): Promise<RagContext | null> {
+  const baseUrl = getRagServiceUrl();
+  if (!baseUrl) return null;
+
+  try {
+    const res = await fetch(`${baseUrl}/retrieve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        npcId,
+        topKEvents,
+        topKMemories,
+      }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return {
+      events: Array.isArray(json.events) ? json.events : [],
+      memories: Array.isArray(json.memories) ? json.memories : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Push a batch of sim events and NPC memories to the RAG service for
+ * indexing.  This is fire-and-forget — errors are swallowed so game flow is
+ * never blocked.
+ */
+export async function ingestRagContext(
+  simEvents: {
+    eventId: string;
+    summary: string;
+    category: string;
+    season: string;
+    gameTick: number;
+    worldTime: number;
+    source: string;
+    visibility: string;
+    deltasPreview?: string;
+  }[],
+  npcMemories: {
+    npcId: string;
+    event: string;
+    tick: number;
+    sentiment: string;
+  }[],
+): Promise<void> {
+  const baseUrl = getRagServiceUrl();
+  if (!baseUrl) return;
+
+  try {
+    await fetch(`${baseUrl}/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ simEvents, npcMemories }),
+    });
+  } catch {
+    // Intentionally silent — ingest failures must not affect gameplay
+  }
 }
 
 async function callGemini(prompt: string, cacheKey?: string): Promise<string | null> {
@@ -105,7 +189,18 @@ OPTION2: [option text]
 OPTION3: [option text]`;
 }
 
-export async function generateNpcDialogue(ctx: NpcContext): Promise<DialogueResponse | null> {
+export async function generateNpcDialogue(ctx: NpcContext, npcId?: string): Promise<DialogueResponse | null> {
+  // Attempt to enrich context via the RAG service before building the prompt.
+  // Falls back to the original slice-based arrays when RAG is unavailable.
+  if (npcId) {
+    const ragQuery = `${ctx.npcName} ${ctx.npcJob} in ${ctx.location} player approaches`;
+    const rag = await fetchRagContext(ragQuery, npcId);
+    if (rag) {
+      if (rag.events.length > 0) ctx.worldEvents = rag.events;
+      if (rag.memories.length > 0) ctx.npcMemories = rag.memories;
+    }
+  }
+
   const prompt = buildDialoguePrompt(ctx);
   const dispBucket = ctx.npcDisposition > 50 ? 'hi' : ctx.npcDisposition < -20 ? 'lo' : 'mid';
   const goalBucket = ctx.npcGoals?.[0]?.slice(0, 20) ?? '';

@@ -565,9 +565,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   movePlayer: (dx: number, dy: number) => {
-    // #region agent log
-    const _moveT0 = performance.now();
-    // #endregion
     const state = get();
     if (state.currentEvent || state.lastResult || state.phase === 'dead' || state.phase === 'dungeon' || state.phase === 'battle') return;
 
@@ -661,23 +658,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       playerTitle: getPlayerTitle(state.reputation as unknown as Record<string, number>),
       tutorialObjective,
     });
-    // #region agent log
-    const _moveMs = performance.now() - _moveT0;
-    if (_moveMs > 10) {
-      fetch('http://127.0.0.1:7891/ingest/68e880b8-e871-43be-946d-757508d96764', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'a7e92f' },
-        body: JSON.stringify({
-          sessionId: 'a7e92f',
-          hypothesisId: 'E',
-          location: 'gameStore.ts:movePlayer',
-          message: 'movePlayer_slow_ms',
-          data: { ms: Math.round(_moveMs * 100) / 100, nx, ny, nearest },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
   },
 
   travel: (locationId: string) => {

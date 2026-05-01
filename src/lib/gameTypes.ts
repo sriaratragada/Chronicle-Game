@@ -131,6 +131,36 @@ export interface SimEvent {
   visibility: SimEventVisibility;
 }
 
+/** Mutation batch returned by POST /world/tick from the World Brain service. */
+export interface WorldBrainMutation {
+  factionDecisions: {
+    factionId: string;
+    action: 'declare_war' | 'make_peace' | 'send_trade' | 'fortify' | 'none';
+    targetId?: string;
+    reason: string;
+    confidence: number;
+  }[];
+  npcEvents: {
+    npcId: string;
+    todayAction: string;
+    memoryEvent: string;
+    sentimentDeltas: Record<string, number>;
+    locationChange?: string;
+  }[];
+  economyAdjustments: {
+    locationId: string;
+    itemId: string;
+    priceDelta: number;
+    stockDelta: number;
+    reason: string;
+  }[];
+  narrativeEvent?: {
+    title: string;
+    chronicleText: string;
+    type: ChronicleEntryType;
+  };
+}
+
 export interface GameChoice {
   id: string;
   text: string;

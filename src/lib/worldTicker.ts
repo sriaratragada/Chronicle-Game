@@ -19,10 +19,10 @@ import { enemyAttackDamage, getAggroRadius } from './combatSystem';
 import { getTotalArmor, countItem, addToInventory } from './craftingSystem';
 import { addXp } from './skills';
 import { ITEMS } from './items';
-import { MAP_W, MAP_H } from './mapGenerator';
+import { MAP_W, MAP_H, LOCATION_COORDS } from './mapGenerator';
 import { toast } from 'sonner';
 import { tickRegionalModifiers } from './regionalState';
-import type { ChronicleEntry, GameState, DayNightPhase, Season, SimEvent } from './gameTypes';
+import type { ChronicleEntry, GameState, DayNightPhase, Season, SimEvent, WorldBrainMutation } from './gameTypes';
 import {
   appendSimEvents,
   buildWorldTickSimEvents,
@@ -35,12 +35,21 @@ import {
 import { evaluateAllFactionStrategies, applyFactionStrategyActions } from './factionAgent';
 import { snapshotMarkets, appendSnapshot } from './marketIntelligence';
 import { synthesizeQuests, evaluateArcs } from './narrativeDirector';
-import { decayRelationships } from './relationshipGraph';
-import { generateNpcLifeDecision, generateGossip, isGeminiConfigured } from './geminiNpc';
+import { decayRelationships, getAllRelationships, updateEdge } from './relationshipGraph';
+import { generateNpcLifeDecision, generateGossip, isGeminiConfigured, ingestRagContext } from './geminiNpc';
 import { getPlayerTitle } from './gameData';
+import { declareWar as declareFactionWar, makePeace as makeFactionPeace } from './factionSystem';
 
 // Rotating index for which NPC gets a life decision each cycle
 let _lifeDecisionNpcIdx = 0;
+
+// World Brain sync state
+let _lastWorldBrainSyncAt = 0;
+const WORLD_BRAIN_INTERVAL_MS = 90_000;
+
+function _getRagServiceUrl(): string | null {
+  return (import.meta as any).env?.VITE_RAG_SERVICE_URL ?? null;
+}
 
 const CHRONICLE_CAP = 400;
 
@@ -222,16 +231,32 @@ function computeWorldTickPhaseA(state: GameState): WorldTickScratch {
       const { factions: updatedFactions, events } = applyFactionStrategyActions(
         newFactionStatesWithStrategy,
         allActions,
-        { declareWar, makePeace, captureTerritory: (f, w, l, loc) => {
-          const wf = f[w];
-          const lf = f[l];
-          if (!wf || !lf) return f;
-          return {
-            ...f,
-            [w]: { ...wf, territory: [...wf.territory, loc] },
-            [l]: { ...lf, territory: lf.territory.filter(t => t !== loc) },
-          };
-        } },
+        {
+          declareWar,
+          makePeace,
+          captureTerritory: (f, w, l, loc) => {
+            const wf = f[w];
+            const lf = f[l];
+            if (!wf || !lf) return f;
+            return {
+              ...f,
+              [w]: { ...wf, territory: [...wf.territory, loc] },
+              [l]: { ...lf, territory: lf.territory.filter(t => t !== loc) },
+            };
+          },
+          spawnCaravan: (fromId, toId, facs) => {
+            const fromFac = facs[fromId];
+            const toLoc = facs[toId]?.territory?.[0];
+            const fromLoc = fromFac?.territory?.[0];
+            const coords = LOCATION_COORDS[fromLoc ?? ''];
+            if (!coords) return;
+            spawnEntity('caravan', coords.x, coords.y, {
+              route: [fromLoc, toLoc].filter(Boolean),
+              cargo: 'gold',
+              faction: fromId,
+            }, 50);
+          },
+        },
       );
       newFactionStatesWithStrategy = updatedFactions;
       const idxRef = { n: 900 };
@@ -489,6 +514,170 @@ function runWorldTickPhaseB(scratch: WorldTickScratch, latest: GameState): void 
   scratch.newGold = newGold;
 }
 
+// ── World Brain: apply mutation batch from Python service ──────────────────
+
+function applyWorldBrainMutation(mutation: WorldBrainMutation): void {
+  const state = useGameStore.getState();
+  let newFactionStates = state.factionStates;
+  let newNpcs = state.npcs;
+  let newMarkets = state.markets;
+  const newChronicleEntries: ChronicleEntry[] = [];
+
+  // ── Faction decisions ──
+  for (const dec of mutation.factionDecisions) {
+    if (dec.action === 'none') continue;
+    if (dec.action === 'declare_war' && dec.targetId) {
+      newFactionStates = declareFactionWar(newFactionStates, dec.factionId, dec.targetId);
+      const attName = newFactionStates[dec.factionId]?.name ?? dec.factionId;
+      const defName = newFactionStates[dec.targetId]?.name ?? dec.targetId;
+      newChronicleEntries.push({
+        tick: state.worldTime, season: state.season,
+        text: `[World Brain] ${attName} has declared war on ${defName}. ${dec.reason}`,
+        type: 'faction',
+      });
+    } else if (dec.action === 'make_peace' && dec.targetId) {
+      newFactionStates = makeFactionPeace(newFactionStates, dec.factionId, dec.targetId);
+      const seekerName = newFactionStates[dec.factionId]?.name ?? dec.factionId;
+      const otherName = newFactionStates[dec.targetId]?.name ?? dec.targetId;
+      newChronicleEntries.push({
+        tick: state.worldTime, season: state.season,
+        text: `[World Brain] ${seekerName} made peace with ${otherName}. ${dec.reason}`,
+        type: 'faction',
+      });
+    } else if (dec.action === 'send_trade' && dec.targetId) {
+      const fromName = newFactionStates[dec.factionId]?.name ?? dec.factionId;
+      const toName = newFactionStates[dec.targetId]?.name ?? dec.targetId;
+      newChronicleEntries.push({
+        tick: state.worldTime, season: state.season,
+        text: `[World Brain] Trade: ${fromName} extends an olive branch to ${toName}. ${dec.reason}`,
+        type: 'faction',
+      });
+    }
+  }
+
+  // ── NPC events ──
+  for (const ev of mutation.npcEvents) {
+    const npcIdx = newNpcs.findIndex(n => n.id === ev.npcId);
+    if (npcIdx === -1) continue;
+    const npc = newNpcs[npcIdx]!;
+    const newMemory = {
+      event: ev.memoryEvent.slice(0, 160),
+      tick: state.worldTime,
+      sentiment: 'neutral' as const,
+    };
+    const updated = {
+      ...npc,
+      memories: [...npc.memories.slice(-9), newMemory],
+      ...(ev.locationChange ? { location: ev.locationChange } : {}),
+    };
+    if (newNpcs === state.npcs) newNpcs = [...state.npcs];
+    newNpcs[npcIdx] = updated;
+
+    // Apply sentiment deltas to relationship graph
+    for (const [otherId, delta] of Object.entries(ev.sentimentDeltas)) {
+      if (delta !== 0) {
+        updateEdge(ev.npcId, otherId, delta, ev.memoryEvent.slice(0, 60), state.worldTime);
+      }
+    }
+  }
+
+  // ── Economy adjustments ──
+  for (const adj of mutation.economyAdjustments) {
+    const market = newMarkets[adj.locationId];
+    if (!market) continue;
+    const itemIdx = market.items.findIndex(i => i.itemId === adj.itemId);
+    if (itemIdx === -1) continue;
+    if (newMarkets === state.markets) newMarkets = { ...state.markets };
+    const mkt = newMarkets[adj.locationId]!;
+    const item = mkt.items[itemIdx]!;
+    const newItems = [...mkt.items];
+    newItems[itemIdx] = {
+      ...item,
+      stock: Math.max(0, Math.min(30, item.stock + adj.stockDelta)),
+      priceMultiplier: Math.max(0.5, Math.min(2.4, item.priceMultiplier + adj.priceDelta)),
+    };
+    newMarkets[adj.locationId] = { ...mkt, items: newItems };
+  }
+
+  // ── Narrative event ──
+  if (mutation.narrativeEvent) {
+    newChronicleEntries.push({
+      tick: state.worldTime, season: state.season,
+      text: `[${mutation.narrativeEvent.title}] ${mutation.narrativeEvent.chronicleText}`,
+      type: mutation.narrativeEvent.type,
+    });
+  }
+
+  // Apply everything in one setState
+  const patch: Partial<GameState> = {};
+  if (newFactionStates !== state.factionStates) patch.factionStates = newFactionStates;
+  if (newNpcs !== state.npcs) patch.npcs = newNpcs;
+  if (newMarkets !== state.markets) patch.markets = newMarkets;
+  if (newChronicleEntries.length > 0) {
+    const merged = [...state.chronicle, ...newChronicleEntries];
+    patch.chronicle = merged.length > CHRONICLE_CAP ? merged.slice(-CHRONICLE_CAP) : merged;
+  }
+  if (Object.keys(patch).length > 0) {
+    useGameStore.setState(patch);
+  }
+}
+
+async function syncWorldBrain(): Promise<void> {
+  const ragUrl = _getRagServiceUrl();
+  if (!ragUrl) return;
+
+  const state = useGameStore.getState();
+  if (state.phase !== 'playing') return;
+
+  const request = {
+    worldTime: state.worldTime,
+    season: state.season,
+    factions: Object.values(state.factionStates).map(f => ({
+      id: f.id, name: f.name, treasury: f.treasury,
+      armySize: f.armySize, territory: f.territory,
+      atWarWith: f.atWarWith, morale: f.morale,
+    })),
+    npcs: state.npcs.map(n => ({
+      id: n.id, name: n.name, title: n.title,
+      location: n.location, faction: n.faction,
+      personality: n.personality, disposition: n.disposition,
+    })),
+    relationships: getAllRelationships().slice(0, 60).map(e => ({
+      fromId: e.fromId, toId: e.toId,
+      sentiment: e.sentiment, interactions: e.interactions,
+    })),
+    markets: Object.values(state.markets).map(m => ({
+      locationId: m.locationId,
+      items: (m.items ?? []).map((i: any) => ({
+        itemId: i.itemId, stock: i.stock, priceMultiplier: i.priceMultiplier,
+      })),
+    })),
+    regional: {
+      warTension: state.regionalModifiers.warTension,
+      drought: state.regionalModifiers.drought,
+      banditPressure: state.regionalModifiers.banditPressure,
+      stormSeverity: state.regionalModifiers.stormSeverity,
+    },
+    playerRep: state.reputation as Record<string, number>,
+    currentLocation: state.currentLocation ?? '',
+    recentChronicle: state.chronicle.slice(-10).map(e => e.text),
+  };
+
+  try {
+    const res = await fetch(`${ragUrl}/world/tick`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    if (!res.ok) return;
+    const mutation: WorldBrainMutation = await res.json();
+    _lastWorldBrainSyncAt = Date.now();
+    applyWorldBrainMutation(mutation);
+  } catch {
+    // Silent — World Brain failures must never block gameplay
+  }
+}
+
 function applyWorldTickPatch(scratch: WorldTickScratch): void {
   const {
     state,
@@ -565,6 +754,31 @@ function applyWorldTickPatch(scratch: WorldTickScratch): void {
   if (nextSimLog !== state.simEventLog) patch.simEventLog = nextSimLog;
 
   useGameStore.setState(patch);
+
+  // ── Fire-and-forget RAG ingest so ChromaDB gets fed each tick ──
+  const ragUrl = _getRagServiceUrl();
+  if (ragUrl && allTickSim.length > 0) {
+    const simPayload = allTickSim.map(ev => ({
+      eventId: ev.id,
+      summary: ev.summary,
+      category: ev.category,
+      season: ev.season,
+      gameTick: ev.gameTick,
+      worldTime: ev.worldTime,
+      source: ev.source,
+      visibility: ev.visibility,
+    }));
+    const currentState = useGameStore.getState();
+    const memPayload = currentState.npcs.flatMap(npc =>
+      npc.memories.slice(-2).map(m => ({
+        npcId: npc.id,
+        event: m.event,
+        tick: m.tick,
+        sentiment: m.sentiment,
+      }))
+    );
+    ingestRagContext(simPayload, memPayload).catch(() => {/* silent */});
+  }
 }
 
 function runWorldTickPipeline(): void {
@@ -587,6 +801,11 @@ function runWorldTickPipeline(): void {
       }
       runWorldTickPhaseB(scratch, latest);
       applyWorldTickPatch(scratch);
+
+      // World Brain sync: every 90 real-time seconds
+      if (Date.now() - _lastWorldBrainSyncAt > WORLD_BRAIN_INTERVAL_MS && scratch.state.phase === 'playing') {
+        syncWorldBrain().catch(() => {/* silent */});
+      }
 
       if (scratch.newWorldTime % 60 === 0 && scratch.state.phase === 'playing') {
         const px = latest.playerX;

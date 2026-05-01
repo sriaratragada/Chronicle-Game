@@ -2,3 +2,5 @@ chromadb==1.5.8
 sentence-transformers==5.4.1
 fastapi==0.136.1
 uvicorn==0.46.0
+networkx==3.4.2
+httpx==0.28.1

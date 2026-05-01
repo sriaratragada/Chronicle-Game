@@ -1,24 +1,29 @@
-"""Chronicle of Aethermoor — RAG microservice.
+"""Chronicle of Aethermoor — RAG + World Brain microservice.
 
-Exposes two HTTP endpoints:
+Endpoints:
 
   POST /ingest
-    Accepts batches of SimEvent objects and NpcMemory objects exported from
-    the game's Zustand store.  Upserts them into ChromaDB for later retrieval.
-    The game calls this fire-and-forget in the background (no blocking wait).
+    Accepts batches of SimEvent + NpcMemory objects from the Zustand store.
+    Upserts them into ChromaDB. Fire-and-forget from the game client.
 
   POST /retrieve
-    Given a natural-language query assembled from NPC role + player intent,
-    returns the top-K semantically similar world events and NPC memories.
-    Results replace the naive ``slice(-3)`` currently used in geminiNpc.ts.
+    Semantic retrieval for NPC dialogue context. Returns top-K events and
+    memories relevant to the NPC + query.
+
+  POST /world/tick  (World Brain)
+    Accepts a world-state snapshot every ~90 real-time seconds.
+    Runs four AI agents (faction, NPC, economy, narrative) and returns a
+    WorldTickResponse mutation batch the client applies to Zustand.
+
+  GET /health
 
 Run locally:
     uvicorn main:app --reload --port 8787
 
-Environment variables (optional overrides):
-    RAG_PORT        — uvicorn port (default 8787, used in the __main__ block)
-    RAG_ALLOW_ORIGIN — CORS origin for the game's Vite dev server
-                       (default "http://localhost:5173")
+Environment variables:
+    RAG_PORT         — uvicorn port (default 8787)
+    RAG_ALLOW_ORIGIN — CORS origin (default "http://localhost:5173", use "*" on Railway)
+    GEMINI_API_KEY   — server-side Gemini key for World Brain agents
 """
 
 from __future__ import annotations
@@ -33,6 +38,10 @@ from pydantic import BaseModel, Field
 
 import ingest as ingest_module
 from chroma_store import get_npc_memories_collection, get_sim_events_collection
+from models import WorldTickRequest, WorldTickResponse
+from world_tick import run_world_tick
+
+_GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -45,10 +54,12 @@ app = FastAPI(
 )
 
 _ALLOW_ORIGIN = os.getenv("RAG_ALLOW_ORIGIN", "http://localhost:5173")
+# Allow "*" for Railway/Vercel deployments where the origin is unknown at build time
+_ORIGINS = ["*"] if _ALLOW_ORIGIN == "*" else [_ALLOW_ORIGIN, "http://localhost:5173"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_ALLOW_ORIGIN],
+    allow_origins=_ORIGINS,
     allow_methods=["POST", "GET"],
     allow_headers=["Content-Type"],
 )
@@ -135,6 +146,12 @@ def ingest(body: IngestRequest) -> IngestResponse:
     n_events = ingest_module.ingest_sim_events(body.sim_events)
     n_memories = ingest_module.ingest_npc_memories(body.npc_memories)
     return IngestResponse(ingested_events=n_events, ingested_memories=n_memories)
+
+
+@app.post("/world/tick", response_model=WorldTickResponse, response_model_by_alias=True)
+def world_tick(body: WorldTickRequest) -> WorldTickResponse:
+    """Run all four World Brain agents and return a mutation batch."""
+    return run_world_tick(body, _GEMINI_KEY)
 
 
 @app.post("/retrieve", response_model=RetrieveResponse)

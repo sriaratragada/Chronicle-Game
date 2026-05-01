@@ -13,7 +13,8 @@ A browser-based fantasy exploration game built with React + TypeScript, focused 
 - [Available Scripts](#available-scripts)
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
-- [Current Scope and Next AI Milestones](#current-scope-and-next-ai-milestones)
+- [Current AI Scope](#current-ai-scope)
+- [Future AI Iterations](#future-ai-iterations)
 
 ## Overview
 
@@ -40,6 +41,12 @@ The game runs entirely in the browser and uses procedural generation + chunk cac
 - **Dialogue and narrative chronicle** (`dialogue.ts`, `ChronicleView.tsx`)
 - **Save/load slot system** using browser storage (`saveSystem.ts`)
 - **Optional Gemini-powered NPC dialogue** (`geminiNpc.ts`)
+- **Goal-oriented NPC planning** (`goalSystem.ts`)
+- **NPC relationship graph** (`relationshipGraph.ts`)
+- **Market intelligence and trade-lead analysis** (`marketIntelligence.ts`)
+- **Faction strategy agent** (`factionAgent.ts`)
+- **Narrative director and quest synthesis** (`narrativeDirector.ts`)
+- **RAG microservice** for semantic event/memory retrieval (`rag_service/`)
 
 ## Lore
 
@@ -125,7 +132,7 @@ When configured, hamlet/NPC dialogue can be generated using Gemini (`geminiNpc.t
 - location + continent,
 - season/weather/day phase,
 - NPC memory + disposition,
-- recent chronicle/world events.
+- recent chronicle/world events retrieved via the RAG service (or a recency slice as fallback).
 
 Responses are parsed into:
 
@@ -134,20 +141,70 @@ Responses are parsed into:
 
 Caching is used to reduce redundant requests and improve responsiveness.
 
-### 5) AI Scope (Expanded Vision)
+### 5) Goal-Oriented NPC Planning
 
-The intended AI trajectory extends beyond dialogue:
+`goalSystem.ts` gives every NPC a priority-ranked list of goals derived from their job, current day phase, and world conditions:
 
-- **Goal-oriented NPC planning** (work, travel, social, survival goals)
-- **Relationship graphs** (alliances, grudges, trust over time)
-- **Faction-level strategy agents** (resource pressure, military posture, diplomacy)
-- **Market intelligence loops** (predictive supply routing, adaptive merchant behavior, convoy risk balancing)
-- **Dynamic quest synthesis** from live world conditions
-- **Chronicle-aware narrative director** to pace major regional arcs
-- **Regional memory models** so settlements “remember” player impact
-- **Macro↔micro coupling** where individual choices accumulate into regional economic and political shifts
+- goal types: `travel`, `work`, `trade`, `rest`, `socialize`, `flee`, `patrol`,
+- each goal carries a priority score, optional target location/NPC, expiry tick, and a human-readable reason,
+- `pickTopGoal` selects the active goal, driving schedule execution and dialogue tone.
 
-In short: AI is positioned as both **character intelligence** and **world intelligence**, aiming for a near-real-life simulation feel across macro (regional systems) and micro (individual behavior) scales.
+### 6) NPC Relationship Graph
+
+`relationshipGraph.ts` maintains a persistent in-memory graph of bilateral NPC relationships:
+
+- each edge holds a `sentiment` score (−100 to +100), interaction count, last-interaction tick, and a capped `sharedHistory` log,
+- sentiment shifts with every significant interaction (combat, trade, dialogue outcome),
+- relationships feed into dialogue context, making NPCs remember grudges, alliances, and past cooperation.
+
+### 7) Market Intelligence
+
+`marketIntelligence.ts` gives the simulation merchant-grade economic awareness:
+
+- periodic `MarketSnapshot` records price and stock levels for every settlement,
+- `findTradeLeads` scans snapshot pairs to surface cross-settlement arbitrage opportunities (`TradeLead`),
+- trade leads inform caravan routing decisions and adaptive merchant NPC behavior.
+
+### 8) Client-Side Faction Strategy Agent
+
+`factionAgent.ts` evaluates per-faction conditions each world tick and emits structured strategy actions:
+
+- peace overtures when army or treasury falls below survival thresholds,
+- war declarations when army ratio, treasury, and tension all align,
+- trade caravan dispatch when economic surplus allows,
+- territory capture attempts weighted by army advantage.
+
+Cooldowns prevent spammy decisions. Thresholds are mirrored on the server-side faction agent for consistency.
+
+### 9) Narrative Director and Quest Synthesis
+
+`narrativeDirector.ts` acts as a live story engine:
+
+- `QUEST_TEMPLATES` encode conditional quest generators tied to real simulation state (bandit pressure, trade stagnation, faction war, seasonal crises),
+- `synthesizeQuests` scans active templates each tick and emits new quests only when world conditions satisfy them,
+- `tickNarrativeDirector` appends chronicle entries so the arc of the world is logged in player-readable history.
+
+### 10) RAG Service — Semantic Context Retrieval
+
+`rag_service/` is a standalone Python microservice (FastAPI + ChromaDB + sentence-transformers) that gives the LLM a **bounded, semantically relevant** context window instead of a naive recency slice:
+
+- **`POST /ingest`** — fire-and-forget from the game client; upserts sim events and NPC memories into two ChromaDB collections (`sim_events`, `npc_memories`).
+- **`POST /retrieve`** — before every Gemini call, returns the top-K events and NPC-scoped memories most semantically similar to the NPC role + player intent, with optional category/season filters.
+- Embedding model: `all-MiniLM-L6-v2` (~80 MB, CPU-friendly, auto-downloaded on first run).
+- If `VITE_RAG_SERVICE_URL` is unset or unreachable, `geminiNpc.ts` falls back to slice-based context — no regression.
+
+### 11) World Brain — Server-Side Multi-Agent Orchestrator
+
+`POST /world/tick` (also in `rag_service/`) runs four specialized agents every ~90 real-time seconds, fed by a shared RAG context pulled once per tick:
+
+| Agent | File | Approach |
+|---|---|---|
+| **Faction** | `agents/faction_agent.py` | Heuristic rules + Gemini for high-tension factions |
+| **NPC Life** | `agents/npc_agent.py` | Behavioral-state classification + rotating Gemini prose per NPC |
+| **Economy** | `agents/economy_agent.py` | NetworkX trade-flow graph + regional shock propagation (no LLM) |
+| **Narrative** | `agents/narrative_agent.py` | Rate-limited Gemini chronicle prose + 5-word event title |
+
+The orchestrator (`world_tick.py`) returns a consolidated `WorldTickResponse` mutation batch applied to the Zustand store on the client — faction decisions, NPC events, economy adjustments, and a narrative chronicle entry.
 
 ## Tech Stack
 
@@ -156,9 +213,13 @@ In short: AI is positioned as both **character intelligence** and **world intell
 - **Rendering:** HTML5 Canvas + React UI panels
 - **Styling/UI:** Tailwind CSS, shadcn/Radix components
 - **Testing:** Vitest + Testing Library
-- **Optional AI Integration:** Google Gemini API
+- **AI — Client (dialogue):** Google Gemini API (`gemini-2.0-flash`)
+- **AI — RAG Service:** Python 3, FastAPI, ChromaDB, sentence-transformers (`all-MiniLM-L6-v2`)
+- **AI — World Brain agents:** NetworkX (economy graph), Gemini (faction/NPC/narrative agents)
 
 ## Getting Started
+
+### Game client
 
 ```bash
 npm install
@@ -166,6 +227,17 @@ npm run dev
 ```
 
 Then open the local Vite URL shown in your terminal.
+
+### RAG service (optional)
+
+```bash
+cd rag_service
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8787
+```
+
+Set `VITE_RAG_SERVICE_URL=http://localhost:8787` in the root `.env` file to activate semantic context retrieval and the World Brain tick endpoint.
 
 ## Available Scripts
 
@@ -182,10 +254,25 @@ Then open the local Vite URL shown in your terminal.
 Create a `.env` file in the project root (or copy from `.env.example`):
 
 ```bash
+# Client-side Gemini key for NPC dialogue generation
 VITE_GEMINI_API_KEY=
+
+# URL of the RAG microservice (enables semantic context + World Brain)
+VITE_RAG_SERVICE_URL=
 ```
 
-If no key is provided, the game still runs; AI dialogue enhancement is simply disabled.
+| Variable | Required | Effect when absent |
+|---|---|---|
+| `VITE_GEMINI_API_KEY` | No | AI dialogue disabled; static responses used |
+| `VITE_RAG_SERVICE_URL` | No | Falls back to recency-slice context for Gemini prompts |
+
+The RAG service also reads server-side variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | — | Server-side key for World Brain agents |
+| `RAG_PORT` | `8787` | uvicorn port |
+| `RAG_ALLOW_ORIGIN` | `http://localhost:5173` | CORS origin (use `*` on Railway/Vercel) |
 
 ## Project Structure
 
@@ -193,18 +280,50 @@ If no key is provided, the game still runs; AI dialogue enhancement is simply di
 src/
   components/game/     # Main game UI (map, HUD, panels, battle, overlays)
   lib/                 # Core simulation systems (world, entities, economy, AI, saves)
+    factionAgent.ts    # Client-side faction strategy decisions
+    goalSystem.ts      # Goal-oriented NPC planning
+    relationshipGraph.ts  # Bilateral NPC sentiment graph
+    marketIntelligence.ts # Price snapshots and arbitrage trade leads
+    narrativeDirector.ts  # Quest synthesis and chronicle arc direction
+    geminiNpc.ts       # Gemini dialogue with RAG context integration
   pages/               # Route-level app entry pages
   test/                # Vitest test files
+rag_service/
+  main.py              # FastAPI app — /ingest, /retrieve, /world/tick, /health
+  world_tick.py        # World Brain orchestrator
+  agents/              # Faction, NPC, economy, and narrative server-side agents
+  chroma_store.py      # ChromaDB collection accessors
+  ingest.py            # Embedding + upsert helpers
+  models.py            # Pydantic request/response schemas
 ```
 
-## Current Scope and Next AI Milestones
+## Current AI Scope
 
-Current implementation already supports simulation-driven gameplay, structured events, and optional AI dialogue.  
-Next major milestones are focused on deeper autonomous behavior and long-horizon narrative coherence:
+The project already ships a layered, multi-tier AI architecture:
 
-1. deeper NPC memory and intent persistence,
-2. faction strategy loops tied to economy and territory,
-3. adaptive trade AI (merchant route choice, convoy response to risk, regional arbitrage),
-4. event-to-quest generation pipelines grounded in simulation deltas,
-5. narrative quality controls for AI outputs (consistency, lore adherence, safety),
-6. optional cloud-backed persistence for long-running worlds.
+| Layer | What it does |
+|---|---|
+| **Simulation agents** (client) | `worldTicker.ts` runs weather, economy, factions, NPCs, caravans, and wildlife as staged agents every tick |
+| **Goal-oriented NPCs** | `goalSystem.ts` + `npcAI.ts` — priority goals (work, trade, rest, patrol, flee) driven by job and day phase |
+| **Relationship graph** | `relationshipGraph.ts` — persistent bilateral sentiment between any two world actors |
+| **Faction strategy** | `factionAgent.ts` — rule-based war/peace/trade decisions per faction, rate-limited |
+| **Market intelligence** | `marketIntelligence.ts` — price snapshots and arbitrage trade-lead detection |
+| **Quest/narrative synthesis** | `narrativeDirector.ts` — condition-triggered quest templates from live simulation state |
+| **LLM dialogue** | `geminiNpc.ts` — Gemini-powered NPC conversation with full world context |
+| **RAG service** | `rag_service/` — ChromaDB + sentence-transformers for semantically relevant prompt context |
+| **World Brain** | `POST /world/tick` — server-side faction, NPC, economy, and narrative agents backed by Gemini |
+
+AI operates at both **character intelligence** (individual NPC goals, memory, relationships) and **world intelligence** (faction strategy, regional economy, narrative pacing) levels.
+
+## Future AI Iterations
+
+The next planned advances, in rough priority order:
+
+1. **Persistent NPC memory across sessions** — store goal history and relationship state in save files so long-running worlds accumulate genuine social history.
+2. **Faction-level LLM diplomacy** — replace heuristic peace/war thresholds with Gemini-generated diplomatic negotiations between faction agents, grounded in RAG context.
+3. **Adaptive caravan routing** — merchants evaluate real-time trade leads from `marketIntelligence.ts` and dynamically re-route convoys, with risk-weighted decisions around bandit pressure.
+4. **Regional memory models** — settlements track and surface player impact over time (infrastructure built, quests resolved, enemies defeated), influencing NPC disposition and market pricing.
+5. **Narrative quality controls** — a lore-consistency layer that validates Gemini outputs against known faction/location facts before surfacing them to the player.
+6. **Cloud-backed world persistence** — optional sync of simulation state (ChromaDB + game save) to a remote store so worlds survive browser resets and can be shared.
+7. **Cross-NPC gossip propagation** — NPC-to-NPC information diffusion so rumors (war declarations, merchant windfalls, dungeon discoveries) spread organically through relationship edges.
+8. **Player-model personalization** — track player behavior patterns (combat vs. trade vs. exploration preference) and tune quest synthesis and NPC reactions accordingly.
